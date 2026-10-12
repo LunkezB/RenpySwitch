@@ -93,7 +93,13 @@ dkp-pacman -S switch-mesa switch-glad switch-libdrm_nouveau \
 #dkp-pacman -U --noconfirm "$CACHE_DIR/$HELPERS_PKG"
 #dkp-pacman -U --noconfirm "$CACHE_DIR/$FRIBIDI_PKG"
 
-/bin/bash -c 'sed -i'"'"'.bak'"'"' '"'"'s/set(CMAKE_EXE_LINKER_FLAGS_INIT "/set(CMAKE_EXE_LINKER_FLAGS_INIT "-fPIC /'"'"' $DEVKITPRO/switch.cmake'
+#/bin/bash -c 'sed -i'"'"'.bak'"'"' '"'"'s/set(CMAKE_EXE_LINKER_FLAGS_INIT "/set(CMAKE_EXE_LINKER_FLAGS_INIT "-fPIC /'"'"' $DEVKITPRO/switch.cmake'
+if [ -f "$DEVKITPRO/cmake/Switch.cmake" ]; then
+    sed -i.bak 's/set(CMAKE_EXE_LINKER_FLAGS_INIT "/set(CMAKE_EXE_LINKER_FLAGS_INIT "-fPIC /' "$DEVKITPRO/cmake/Switch.cmake"
+    echo ">>> Successfully patched $DEVKITPRO/cmake/Switch.cmake"
+else
+    echo ">>> WARNING: $DEVKITPRO/cmake/Switch.cmake not found. Skipping patch."
+fi
 
 # ─── Ren'Py & SDL2 Downloads (Cached in ./downloads/) ─────────────────────────
 PYGAME_TAR="pygame_sdl2-$PYGAME_SDL2_VER+renpy$RENPY_VER.tar.gz"
