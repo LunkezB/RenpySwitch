@@ -5,7 +5,7 @@ on: [push]
 jobs:
     build-artifact:
         name: Build
-        runs-on: ubuntu-26.04
+        runs-on: ubuntu-24.04
         container: devkitpro/devkita64:latest
 
         steps:
@@ -18,7 +18,7 @@ jobs:
             submodules: recursive
             
         - name: Fix line endings
-          run: sed -i 's/\r//' setup.bash build.bash link_sources.bash
+          run: sed -i 's/\r$//' setup.bash build.bash link_sources.bash
 
         - name: Setup environment
           run: sudo bash setup.bash
