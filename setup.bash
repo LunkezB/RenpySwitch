@@ -2,7 +2,7 @@
 set -e
 
 export DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
-export RENPY_VER=8.5.2
+export RENPY_VER=8.4.1
 export PYGAME_SDL2_VER=2.1.0
 
 # ─── Directories & Caching Setup ─────────────────────────────────────────────
