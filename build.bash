@@ -2,7 +2,7 @@
 set -euo pipefail
 
 export DEVKITPRO=/opt/devkitpro
-export RENPY_VER=8.5.2
+export RENPY_VER=8.4.1
 
 CLEAN=false
 
