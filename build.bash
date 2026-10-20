@@ -83,9 +83,10 @@ mkdir -p raw/romfs/Contents raw/exefs
 # Ren'Py package (pure Python + renpy/common), without build-only files.
 cp -r build-switch/compile/renpy raw/romfs/Contents/renpy
 cp renpy-source/renpy.py raw/romfs/Contents/renpy.py
+# (renpy/common/_layout/*.rpym must stay: games using the classic layout
+# system, layout.defaults(), load them at init.)
 find raw/romfs/Contents/renpy \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' \
-    -o -name '*.c' -o -name '*.h' -o -name '*.rpym' -o -name '__pycache__' \) -prune -exec rm -rf {} +
-rm -rf raw/romfs/Contents/renpy/common/_layout
+    -o -name '*.c' -o -name '*.h' -o -name '__pycache__' \) -prune -exec rm -rf {} +
 
 # CPython standard library from NXPython (without static libs / tests).
 mkdir -p raw/romfs/python
@@ -127,6 +128,14 @@ else
     echo ">>> WARNING: no host CPython with bytecode magic '$TARGET_MAGIC' (got '$HOST_MAGIC' from '$HOST_PY314');"
     echo ">>>          .py files will be compiled on the console at every start."
 fi
+
+# Sanity check: files Ren'Py needs at runtime.
+for f in Contents/renpy.py Contents/renpy/bootstrap.py Contents/renpy/common/00start.rpyc \
+         Contents/renpy/common/_layout/screen_main_menu.rpym Contents/renpy/gl2/assimp.py \
+         python/lib/python3.14/os.py python/site/six.py python/site/ecdsa/__init__.py \
+         python/site/_posixsubprocess.py python/site/_switch_compat.py; do
+    [ -f "raw/romfs/$f" ] || { echo "ERROR: missing raw/romfs/$f" >&2; exit 1; }
+done
 
 # ─── 5. NRO / NSO ────────────────────────────────────────────────────────────
 echo ">>> Packaging..."

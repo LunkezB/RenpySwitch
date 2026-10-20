@@ -1,0 +1,32 @@
+From: RenpySwitch
+Subject: [PATCH] os.urandom on the Switch via libnx randomGet()
+
+diff --git a/Python/bootstrap_hash.c b/Python/bootstrap_hash.c
+index 4ca1fb1..e3834f5 100644
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -1,4 +1,8 @@
+ #include "Python.h"
++#ifdef __SWITCH__
++#  include <switch/types.h>
++#  include <switch/kernel/random.h>
++#endif
+ #include "pycore_fileutils.h"     // _Py_fstat_noraise()
+ #include "pycore_initconfig.h"
+ #include "pycore_pyhash.h"        // _Py_HashSecret_t
+@@ -496,11 +500,10 @@ pyurandom(void *buffer, Py_ssize_t size, int blocking, int raise)
+ #ifdef MS_WINDOWS
+     return win32_urandom((unsigned char *)buffer, size, raise);
+ #elif defined(__SWITCH__)
+-    if (raise) {
+-        PyErr_SetString(PyExc_NotImplementedError,
+-                        "os.urandom is not implemented on Switch yet");
+-    }
+-    return -1;
++    /* libnx CSPRNG, seeded from the kernel's entropy (svcGetInfo
++       RandomEntropy). Never blocks and cannot fail. */
++    randomGet(buffer, (size_t)size);
++    return 0;
+ #else
+ 
+ #if defined(PY_GETRANDOM) || defined(PY_GETENTROPY)

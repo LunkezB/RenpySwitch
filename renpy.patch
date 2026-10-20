@@ -536,7 +536,7 @@ index 116fea2..e96d189 100644
          # in the same place as common persistent.
          # This is better than not working at all.
 diff --git a/renpy/script.py b/renpy/script.py
-index 0133ccf..ae3d6f9 100644
+index 0133ccf..49bf00e 100644
 --- a/renpy/script.py
 +++ b/renpy/script.py
 @@ -900,7 +900,9 @@ class Script(object):
@@ -544,9 +544,9 @@ index 0133ccf..ae3d6f9 100644
                  )
  
 -                if not renpy.macapp:
-+                # (Switch: skip when the game is embedded in the read-only
-+                # RomFS; a loose game folder on the SD card is writable.)
-+                if not (renpy.macapp or (renpy.switch and renpy.config.gamedir.startswith("romfs:"))):
++                # (Switch: skip files in the read-only RomFS, e.g. renpy/common
++                # or an embedded game; a game folder on the SD card is writable.)
++                if not (renpy.macapp or (renpy.switch and str(rpycfn).startswith("romfs:"))):
                      try:
                          with open(rpycfn, "wb") as f:
                              self.write_rpyc_header(f)
