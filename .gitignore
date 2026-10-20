@@ -22,3 +22,7 @@ downloads/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# NSP tools (scripts/nsp_tools.bash)
+tools-build/
+dist/

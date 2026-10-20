@@ -12,19 +12,24 @@ and icosane.
 
 ## Using it
 
-1. **Get the launcher**: download the `renpy-switch-nro` artifact from the
-   latest successful [Actions](../../actions) run (or build it, below).
+1. **Get the engine**: download the `renpy-switch` artifact from the latest
+   successful [Actions](../../actions) run (or build it, below). It has
+   `renpy-switch.nro` (the engine), `apk2switch.py` (the converter) and
+   `hacbrewpack.exe` (for installable NSPs, see below).
 2. **Get the game folder**:
    * PC game: the `game` folder of the Ren'Py game.
    * Android APK made with Ren'Py: convert it with `tools/apk2switch.py`:
 
      ```
-     python tools/apk2switch.py game.apk --nro renpy-switch.nro --name mygame --title "My Game"
+     python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --title "My Game"
      ```
 
      It extracts the game, removes the Android `x-` prefixes, adds the
      presplash and the Switch controls, checks image/video formats and gives
-     the `.nro` its own title and icon (icon needs `pip install pillow`).
+     the `.nro` its own title, version and icon (icon needs
+     `pip install pillow`). The icon is the APK's launcher icon (found through
+     the manifest, adaptive icons included), else the game's
+     `gui/window_icon.png`, or any picture given with `--icon`.
 
      Add `--pack` to put images, audio and video into a few `.rpa` archives
      (Ren'Py's own format; scripts stay loose). Thousands of small files are
@@ -43,9 +48,30 @@ and icosane.
    start the game.
 
 Saves, logs (`log.txt`, `traceback.txt`, `stdout.txt`) and caches go to
-`sdmc:/switch/mygame/save/`. The game folder can also be embedded into the
-`.nro` (`pack_nro.bash --embed`), but a loose folder avoids the FAT32 4 GB
-file limit and allows updates by copying files.
+`sdmc:/switch/mygame/save/`.
+
+### Installable NSP (HOME menu)
+
+`--nsp` also makes `mygame.nsp`: a normal title with its own icon and name on
+the HOME menu, started without the Homebrew Menu and with the full memory of
+a game. The engine and the game are inside it, so no game folder is needed
+on the SD card.
+
+```
+python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --nsp
+```
+
+* Needs `hacbrewpack.exe` (in the artifact) next to `apk2switch.py` and
+  `prod.keys` dumped from **your own console** (Lockpick_RCM), next to
+  `apk2switch.py` or in `%USERPROFILE%\.switch\`. The keys stay on your PC.
+* Install with DBI, Tinfoil, Goldleaf…; the console needs sigpatches.
+* The title id is made from `--name` (`01f…000`): a rebuilt NSP of the same
+  game keeps it, so it replaces the installed one (if the installer refuses,
+  delete the old one first). `--title-id` sets another.
+* Saves go to `sdmc:/switch/mygame/save/`, the same folder as the `.nro`
+  version, so both share saves.
+* An already converted folder works too:
+  `python apk2switch.py sdmc-copy/switch/mygame/game --nro renpy-switch.nro --nsp`.
 
 ### Controls (`zz_switch_controls.rpy`)
 
@@ -89,8 +115,11 @@ bash setup.bash
 bash build.bash
 ```
 
-Output in `raw/`: `renpy-switch.nro`, `renpy-switch.elf`, `exefs/main` (NSO)
-and `romfs/`.
+Output in `raw/`: `renpy-switch.nro`, `renpy-switch.elf`, `exefs/main` (NSO),
+`exefs/main.npdm` and `romfs/`. `scripts/nsp_tools.bash` then builds
+hacbrewpack (Linux and Windows) and checks the NSP path end to end: the code
+apk2switch takes from the `.nro` must equal `elf2nso`'s, and a test NSP made
+with throwaway keys is unpacked again with hactool and checked.
 
 ### How it is put together
 
@@ -129,5 +158,5 @@ Ren'Py's Cython modules must be built for the host Python 3.14 first
 ## Notes
 
 * No game data is included or built in CI — supply your own.
-* An installable `.nsp` needs proper NCA packaging (e.g. hacbrewpack with your
-  own keys) and is not provided.
+* No keys are included or used in CI: NSPs are made on your own PC with your
+  own console's keys.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-apk2switch: turn a Ren'Py Android APK into a folder for the Nintendo Switch
-homebrew build of Ren'Py 8.5 (RenpySwitch).
+apk2switch: turn a Ren'Py Android APK into a game for the Nintendo Switch
+build of Ren'Py 8.5 (RenpySwitch).
 
 What it does
   1. Extracts the game from the APK (assets/x-game/...) and removes the "x-"
@@ -12,30 +12,40 @@ What it does
   4. Checks the files: Ren'Py version, image/video formats the Switch build
      can't decode (AVIF/JXL/SVG), size. --convert-avif converts AVIF images
      in place (needs Pillow >= 11.2).
-  5. Optionally copies the launcher .nro and gives it its own title, author
-     and icon (the icon is taken from the APK; needs Pillow).
+  5. With --nro: copies the engine (renpy-switch.nro from the CI build) as
+     <name>.nro with the game's title, version and icon (taken from the APK).
+  6. With --nsp: also makes <name>.nsp, an installable title for the HOME
+     menu with the engine and the game inside. Needs hacbrewpack (from the
+     CI build) and prod.keys dumped from your own console.
 
 Result (copy the "switch" folder to the root of the SD card):
   <out>/switch/<name>/<name>.nro
   <out>/switch/<name>/game/...
+  <out>/<name>.nsp                     (with --nsp)
 
 Usage
-  python apk2switch.py game.apk
-  python apk2switch.py game.apk --nro renpy-switch.nro --name subahibi --title "Subarashiki Hibi" --pack
-  python apk2switch.py path/to/switch/subahibi/game --pack      (pack an already converted folder)
+  python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --pack
+  python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --nsp
+  python apk2switch.py path/to/switch/mygame/game --pack      (pack an already converted folder)
 
 --pack puts images, audio and video into a few .rpa archives (Ren'Py's own
 archive format), so copying to the SD card is fast; scripts stay loose.
 
-Only plain Python 3.8+ is required; Pillow is optional (icon, AVIF).
+Running it again when the game folder exists keeps the folder and only
+makes the .nro/.nsp (--force converts the game again).
+
+Only plain Python 3.8+ is required; Pillow is needed for icons
+(pip install pillow) and AVIF conversion.
 """
 
 import argparse
+import hashlib
 import io
 import os
 import pickle
 import shutil
 import struct
+import subprocess
 import sys
 import zipfile
 import zlib
@@ -328,14 +338,47 @@ def write_rpa(path, files, game_dir):
         f.write(b"RPA-3.0 %016x %08x\n" % (index_offset, RPA_KEY))
 
 
+class _IndexUnpickler(pickle.Unpickler):
+    """Archive indexes are plain data; refuse anything that would run code."""
+
+    def find_class(self, module, name):
+        if module in ("_codecs", "codecs") and name == "encode":
+            import codecs
+            return codecs.encode
+        raise pickle.UnpicklingError("unexpected object in an archive index: {}.{}".format(module, name))
+
+
 def read_rpa_index(path):
+    """{name: [(offset, length, prefix)]} of an RPA-3.0 or RPA-2.0 archive."""
     with open(path, "rb") as f:
-        head = f.read(40)
-        offset = int(head[8:24], 16)
-        key = int(head[25:33], 16)
+        parts = f.readline(200).split()
+        if parts[:1] == [b"RPA-3.0"] and len(parts) >= 3:
+            offset, key = int(parts[1], 16), int(parts[2], 16)
+        elif parts[:1] == [b"RPA-2.0"] and len(parts) >= 2:
+            offset, key = int(parts[1], 16), 0
+        else:
+            raise ValueError("{} is not an RPA-2.0/3.0 archive".format(path))
         f.seek(offset)
-        index = pickle.loads(zlib.decompress(f.read()))
-    return {k: [(o ^ key, l ^ key) for (o, l, *_rest) in v] for k, v in index.items()}
+        index = _IndexUnpickler(io.BytesIO(zlib.decompress(f.read())), encoding="bytes").load()
+    out = {}
+    for k, v in index.items():
+        if isinstance(k, bytes):
+            k = k.decode("utf-8", "replace")
+        entries = []
+        for t in v:
+            prefix = t[2] if len(t) > 2 else b""
+            if isinstance(prefix, str):
+                prefix = prefix.encode("latin-1")
+            entries.append((t[0] ^ key, t[1] ^ key, prefix))
+        out[k] = entries
+    return out
+
+
+def read_rpa_file(path, entry):
+    offset, length, prefix = entry
+    with open(path, "rb") as f:
+        f.seek(offset)
+        return prefix + f.read(length - len(prefix))
 
 
 def pack_game(game_dir, max_bytes, prefix="switch"):
@@ -386,7 +429,7 @@ def pack_game(game_dir, max_bytes, prefix="switch"):
             raise SystemExit("ERROR: {} index does not match its contents.".format(name))
         with open(path, "rb") as f:
             for rel in group:
-                off, ln = index[rel][0]
+                off, ln, _prefix = index[rel][0]
                 if ln != os.path.getsize(os.path.join(game_dir, *rel.split("/"))):
                     raise SystemExit("ERROR: size mismatch for {} in {}.".format(rel, name))
             f.seek(0, 2)
@@ -405,226 +448,809 @@ def pack_game(game_dir, max_bytes, prefix="switch"):
 
 
 # ---------------------------------------------------------------------------
-# NRO metadata (title / author / icon)
+# Android: icon, name and version, read the way Android itself does it
+# (AndroidManifest.xml -> resources.arsc -> file), so this works with any APK,
+# including release builds whose resource files were renamed (res/a1.png).
+
+ATTR_LABEL = 0x01010001         # android:label
+ATTR_ICON = 0x01010002          # android:icon
+ATTR_SRC = 0x01010119           # android:src
+ATTR_DRAWABLE = 0x01010199      # android:drawable
+ATTR_VERSION_NAME = 0x0101021C  # android:versionName
+BITMAP_EXTS = (".png", ".webp", ".jpg", ".jpeg")
+
+
+def _u16(b, o):
+    return struct.unpack_from("<H", b, o)[0]
+
+
+def _u32(b, o):
+    return struct.unpack_from("<I", b, o)[0]
+
+
+def _string_pool(b, off):
+    """Strings of the ResStringPool chunk at off."""
+    header_size = _u16(b, off + 2)
+    count, _styles, flags, strings_start = struct.unpack_from("<IIII", b, off + 8)
+    offsets = struct.unpack_from("<%dI" % count, b, off + header_size)
+    base = off + strings_start
+    out = []
+    for so in offsets:
+        p = base + so
+        try:
+            if flags & 0x100:   # UTF-8: char count, byte count, bytes
+                p += 2 if b[p] & 0x80 else 1
+                n = b[p]
+                if n & 0x80:
+                    n = ((n & 0x7F) << 8) | b[p + 1]
+                    p += 2
+                else:
+                    p += 1
+                out.append(b[p:p + n].decode("utf-8", "replace"))
+            else:               # UTF-16: char count, chars
+                n = _u16(b, p)
+                p += 2
+                if n & 0x8000:
+                    n = ((n & 0x7FFF) << 16) | _u16(b, p)
+                    p += 2
+                out.append(b[p:p + 2 * n].decode("utf-16-le", "replace"))
+        except (IndexError, struct.error):
+            out.append("")
+    return out
+
+
+def axml_elements(b):
+    """
+    Start elements of an Android binary XML file, as (tag, attrs) pairs.
+    attrs maps each attribute's resource id (or its name, when it has none)
+    to (value type, value data, string value or None).
+    """
+    if len(b) < 8 or _u16(b, 0) != 0x0003:
+        return
+    strings, resmap = [], ()
+    off = _u16(b, 2)
+    end = min(len(b), _u32(b, 4))
+    while off + 8 <= end:
+        ctype, hsize, csize = struct.unpack_from("<HHI", b, off)
+        if csize < 8:
+            break
+        if ctype == 0x0001:
+            strings = _string_pool(b, off)
+        elif ctype == 0x0180:
+            resmap = struct.unpack_from("<%dI" % ((csize - hsize) // 4), b, off + hsize)
+        elif ctype == 0x0102:
+            ext = off + hsize
+            _ns, name, astart, asize, acount = struct.unpack_from("<IIHHH", b, ext)
+            attrs = {}
+            for i in range(acount):
+                a = ext + astart + i * asize
+                _ans, aname, raw, _size, _res0, dtype, data = struct.unpack_from("<IIIHBBI", b, a)
+                if aname < len(resmap) and resmap[aname]:
+                    key = resmap[aname]
+                else:
+                    key = strings[aname] if aname < len(strings) else aname
+                if dtype == 0x03 and data < len(strings):
+                    text = strings[data]
+                else:
+                    text = strings[raw] if raw < len(strings) else None
+                attrs[key] = (dtype, data, text)
+            yield (strings[name] if name < len(strings) else ""), attrs
+        off += csize
+
+
+class ResourceTable(object):
+    """resources.arsc: resource id -> [(density, language, type, data)]."""
+
+    def __init__(self, b):
+        self.values = {}
+        self.strings = []
+        off = _u16(b, 2)
+        while off + 8 <= len(b):
+            ctype, hsize, csize = struct.unpack_from("<HHI", b, off)
+            if csize < 8:
+                break
+            if ctype == 0x0001:
+                self.strings = _string_pool(b, off)
+            elif ctype == 0x0200:
+                self._package(b, off, hsize, csize)
+            off += csize
+
+    def _package(self, b, off, hsize, size):
+        pkg_id = _u32(b, off + 8)
+        p = off + hsize
+        while p + 8 <= off + size:
+            ctype, h, csize = struct.unpack_from("<HHI", b, p)
+            if csize < 8:
+                break
+            if ctype == 0x0201:
+                self._type(b, p, h, pkg_id)
+            p += csize
+
+    def _type(self, b, off, hsize, pkg_id):
+        type_id, flags, _res, count, entries_start = struct.unpack_from("<BBHII", b, off + 8)
+        cfg = off + 20
+        cfg_size = _u32(b, cfg)
+        density = _u16(b, cfg + 14) if cfg_size >= 16 else 0
+        language = b[cfg + 8:cfg + 10].strip(b"\0").decode("latin-1") if cfg_size >= 12 else ""
+        idx = off + hsize
+        if flags & 0x01:    # sparse: (entry index, offset / 4) pairs
+            pairs = [(_u16(b, idx + 4 * i), _u16(b, idx + 4 * i + 2) * 4) for i in range(count)]
+        elif flags & 0x02:  # 16-bit offsets / 4
+            pairs = [(i, _u16(b, idx + 2 * i)) for i in range(count)]
+            pairs = [(i, o * 4) for i, o in pairs if o != 0xFFFF]
+        else:
+            pairs = [(i, _u32(b, idx + 4 * i)) for i in range(count)]
+            pairs = [(i, o) for i, o in pairs if o != 0xFFFFFFFF]
+        for entry, eo in pairs:
+            e = off + entries_start + eo
+            try:
+                esize, eflags = struct.unpack_from("<HH", b, e)
+                if eflags & 0x0008:     # compact entry
+                    dtype, data = eflags >> 8, _u32(b, e + 4)
+                elif eflags & 0x0001:   # map entry (styles etc.)
+                    continue
+                else:
+                    _vsize, _res0, dtype, data = struct.unpack_from("<HBBI", b, e + esize)
+            except struct.error:
+                continue
+            resid = (pkg_id << 24) | (type_id << 16) | entry
+            self.values.setdefault(resid, []).append((density, language, dtype, data))
+
+    def resolve(self, resid, depth=0):
+        """[(density, language, "string" or "color", value)], references followed."""
+        out = []
+        for density, language, dtype, data in self.values.get(resid, []):
+            if dtype == 0x01 and depth < 8:
+                for d, l, kind, value in self.resolve(data, depth + 1):
+                    out.append((density or d, language or l, kind, value))
+            elif dtype == 0x03 and data < len(self.strings):
+                out.append((density, language, "string", self.strings[data]))
+            elif 0x1C <= dtype <= 0x1F:
+                out.append((density, language, "color", data))
+        return out
+
+
+def open_image(data):
+    """A PIL image (RGBA) from file bytes. Needs Pillow."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    return im.convert("RGBA")
+
+
+class ApkInfo(object):
+    """Name, version and launcher icon of an APK."""
+
+    def __init__(self, path):
+        self.zip = zipfile.ZipFile(path)
+        self.names = set(self.zip.namelist())
+        self.table = None
+        self.manifest = {}
+        self.app = {}
+        try:
+            self.table = ResourceTable(self.zip.read("resources.arsc"))
+        except Exception:
+            pass
+        try:
+            for tag, attrs in axml_elements(self.zip.read("AndroidManifest.xml")):
+                if tag == "manifest" and not self.manifest:
+                    self.manifest = attrs
+                elif tag == "application" and not self.app:
+                    self.app = attrs
+        except Exception:
+            pass
+
+    def read(self, path):
+        return self.zip.read(path) if path in self.names else None
+
+    def _text(self, attr):
+        """A text attribute: a literal, or a string resource (default language first)."""
+        if not attr:
+            return None
+        dtype, data, text = attr
+        if dtype == 0x03:
+            return text or None
+        if dtype == 0x01 and self.table is not None:
+            values = sorted(self.table.resolve(data), key=lambda v: v[1] != "")
+            for _density, _language, kind, value in values:
+                if kind == "string" and value.strip():
+                    return value.strip()
+        return None
+
+    def label(self):
+        return self._text(self.app.get(ATTR_LABEL) or self.app.get("label"))
+
+    def version_name(self):
+        return self._text(self.manifest.get(ATTR_VERSION_NAME) or self.manifest.get("versionName"))
+
+    def _bitmap(self, path):
+        try:
+            return open_image(self.read(path))
+        except Exception:
+            return None
+
+    def _largest(self, paths):
+        best = None
+        for path in paths:
+            if path.lower().endswith(BITMAP_EXTS):
+                im = self._bitmap(path)
+                if im is not None and (best is None or im.size[0] > best.size[0]):
+                    best = im
+        return best
+
+    def _layer(self, dtype, data, depth=0):
+        """An adaptive icon layer: a PIL image, an RGB color (int), or None."""
+        if 0x1C <= dtype <= 0x1F:
+            return data
+        if dtype != 0x01 or self.table is None or depth > 4:
+            return None
+        values = self.table.resolve(data)
+        for _density, _language, kind, value in values:
+            if kind == "color":
+                return value
+        paths = [v for _d, _l, kind, v in values if kind == "string"]
+        best = self._largest(paths)
+        if best is not None:
+            return best
+        # <bitmap android:src=...> or <inset android:drawable=...> wrappers.
+        # (Vector drawables can't be drawn here.)
+        for path in paths:
+            if path.lower().endswith(".xml"):
+                for _tag, attrs in axml_elements(self.read(path) or b""):
+                    ref = attrs.get(ATTR_SRC) or attrs.get(ATTR_DRAWABLE)
+                    if ref:
+                        return self._layer(ref[0], ref[1], depth + 1)
+        return None
+
+    def _adaptive(self, path, need_background):
+        from PIL import Image
+        layers = {}
+        current = None
+        for tag, attrs in axml_elements(self.read(path) or b""):
+            if tag in ("background", "foreground", "monochrome"):
+                current = tag
+            if current in ("background", "foreground") and current not in layers:
+                ref = attrs.get(ATTR_DRAWABLE)
+                if ref:
+                    layers[current] = self._layer(ref[0], ref[1])
+        fg = layers.get("foreground")
+        bg = layers.get("background")
+        if fg is None or isinstance(fg, int) or (bg is None and need_background):
+            return None
+        size = max(432, fg.size[0], bg.size[0] if (bg is not None and not isinstance(bg, int)) else 0)
+        if isinstance(bg, int):
+            canvas = Image.new("RGBA", (size, size), ((bg >> 16) & 255, (bg >> 8) & 255, bg & 255, 255))
+        elif bg is not None:
+            canvas = bg.resize((size, size), Image.LANCZOS)
+        else:
+            canvas = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+        canvas.alpha_composite(fg.resize((size, size), Image.LANCZOS))
+        # Launchers show the middle 72dp of the 108dp layers.
+        m = size // 6
+        return canvas.crop((m, m, size - m, size - m))
+
+    def _guess(self):
+        """Old or unusual APKs: the largest launcher-like picture in res/."""
+        paths = []
+        for n in self.names:
+            base = os.path.basename(n.lower())
+            if not n.startswith("res/") or not base.endswith(BITMAP_EXTS):
+                continue
+            if not any(k in base for k in ("icon", "ic_launcher", "app_icon")):
+                continue
+            if any(k in base for k in ("foreground", "background", "round", "monochrome")):
+                continue
+            paths.append(n)
+        return self._largest(paths)
+
+    def icon(self):
+        """The launcher icon as a PIL image, or None. Needs Pillow."""
+        ref = self.app.get(ATTR_ICON) or self.app.get("icon")
+        if ref and ref[0] == 0x01 and self.table is not None:
+            paths = [v for _d, _l, kind, v in self.table.resolve(ref[1]) if kind == "string"]
+            legacy = self._largest(paths)
+            for path in paths:
+                if path.lower().endswith(".xml"):
+                    try:
+                        im = self._adaptive(path, need_background=legacy is not None)
+                    except Exception:
+                        im = None
+                    if im is not None:
+                        return im
+            if legacy is not None:
+                return legacy
+        return self._guess()
+
+
+# ---------------------------------------------------------------------------
+# Icon for the Homebrew Menu and the HOME menu: a 256x256 JPEG.
+
+def find_game_icon(game_dir):
+    """The game's window icon (gui/window_icon.png in Ren'Py's template), or None."""
+    names = ("gui/window_icon.png", "window_icon.png")
+    for n in names:
+        p = os.path.join(game_dir, *n.split("/"))
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                return f.read()
+    for fn in sorted(os.listdir(game_dir)):
+        if not fn.lower().endswith(".rpa"):
+            continue
+        path = os.path.join(game_dir, fn)
+        try:
+            index = read_rpa_index(path)
+            for n in names:
+                if n in index:
+                    return read_rpa_file(path, index[n][0])
+        except Exception:
+            continue
+    return None
+
+
+def jpeg_size(data):
+    """(width, height) of a JPEG, or None."""
+    p = 2
+    while p + 9 < len(data) and data[p] == 0xFF:
+        marker = data[p + 1]
+        length = struct.unpack_from(">H", data, p + 2)[0]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            h, w = struct.unpack_from(">HH", data, p + 5)
+            return w, h
+        p += 2 + length
+    return None
+
+
+def icon_jpeg(im):
+    """256x256 baseline JPEG without metadata, as the Switch wants it."""
+    from PIL import Image
+    im = im.convert("RGBA")
+    bg = Image.new("RGBA", im.size, (0, 0, 0, 255))
+    bg.alpha_composite(im)
+    w, h = bg.size
+    side = min(w, h)
+    bg = bg.crop(((w - side) // 2, (h - side) // 2, (w - side) // 2 + side, (h - side) // 2 + side))
+    bg = bg.convert("RGB").resize((256, 256), Image.LANCZOS)
+    for quality in (92, 85, 75, 60):
+        out = io.BytesIO()
+        bg.save(out, "JPEG", quality=quality)
+        if out.tell() < 0x20000:
+            break
+    return out.getvalue()
+
+
+def choose_icon(args, apk, game_dir):
+    """(256x256 JPEG bytes, where it came from) or (None, why not)."""
+    try:
+        import PIL  # noqa: F401
+        have_pil = True
+    except ImportError:
+        have_pil = False
+
+    if args.icon:
+        with open(args.icon, "rb") as f:
+            data = f.read()
+        if not have_pil:
+            if data[:2] == b"\xff\xd8" and jpeg_size(data) == (256, 256):
+                return data, args.icon
+            return None, "Pillow is needed to convert {} (pip install pillow)".format(args.icon)
+        return icon_jpeg(open_image(data)), args.icon
+
+    if not have_pil:
+        return None, "Pillow is not installed (pip install pillow)"
+
+    if apk is not None:
+        try:
+            im = apk.icon()
+        except Exception:
+            im = None
+        if im is not None:
+            return icon_jpeg(im), "the APK"
+
+    if game_dir and os.path.isdir(game_dir):
+        data = find_game_icon(game_dir)
+        if data:
+            try:
+                return icon_jpeg(open_image(data)), "the game's window icon"
+            except Exception:
+                pass
+
+    return None, "no icon found in the APK or the game; use --icon picture.png"
+
+
+# ---------------------------------------------------------------------------
+# The launcher .nro: metadata, RomFS and code.
 
 NACP_SIZE = 0x4000
+NACP_LANGUAGES = (
+    "AmericanEnglish", "BritishEnglish", "Japanese", "French", "German",
+    "LatinAmericanSpanish", "Spanish", "Italian", "Dutch", "CanadianFrench",
+    "Portuguese", "Russian", "Korean", "TraditionalChinese", "SimplifiedChinese",
+    "BrazilianPortuguese")
 
 
-def find_apk_icon(apk):
-    """Returns the bytes of the largest launcher-like PNG in res/, or None."""
-    best = None
-    for info in apk.infolist():
-        n = info.filename.lower()
-        if not n.startswith("res/") or not n.endswith(".png"):
-            continue
-        base = os.path.basename(n)
-        if not any(k in base for k in ("icon", "ic_launcher", "app_icon")):
-            continue
-        if "foreground" in base or "background" in base or "round" in base:
-            continue
-        if best is None or info.file_size > best.file_size:
-            best = info
-    return apk.read(best) if best else None
+def nacp_put(nacp, offset, size, text):
+    data = text.encode("utf-8")
+    if len(data) > size - 1:
+        data = data[:size - 1].decode("utf-8", "ignore").encode("utf-8")
+    nacp[offset:offset + size] = data + b"\0" * (size - len(data))
 
 
-def make_icon_jpeg(png_bytes):
-    try:
-        from PIL import Image
-    except ImportError:
+def make_nacp(base, title, author, version, installable=False):
+    nacp = bytearray(base)
+    for lang in range(16):
+        nacp_put(nacp, lang * 0x300, 0x200, title)
+        nacp_put(nacp, lang * 0x300 + 0x200, 0x100, author)
+    if version:
+        nacp_put(nacp, 0x3060, 0x10, version)
+    if installable:
+        nacp[0x3025] = 0                                # no user selection at start
+        struct.pack_into("<I", nacp, 0x302C, 0xFFFF)    # all languages (an icon each)
+        nacp[0x3036] = 0                                # no data loss warning
+        struct.pack_into("<QQ", nacp, 0x3080, 0, 0)     # no system save data:
+        #                                                 saves are on the SD card
+    return bytes(nacp)
+
+
+def romfs_list(f, base):
+    """[(path, offset in f, size)] of the RomFS image at `base` in f."""
+    f.seek(base)
+    (_hsize, _dh_off, _dh_size, dm_off, dm_size, _fh_off, _fh_size,
+     fm_off, fm_size, data_off) = struct.unpack("<10Q", f.read(0x50))
+    f.seek(base + dm_off)
+    dirs = f.read(dm_size)
+    f.seek(base + fm_off)
+    files = f.read(fm_size)
+    out = []
+    todo = [(0, "")]
+    while todo:
+        doff, prefix = todo.pop()
+        _parent, _sibling, child_dir, child_file, _hash, _nlen = struct.unpack_from("<6I", dirs, doff)
+        fo = child_file
+        while fo != 0xFFFFFFFF:
+            _p, sibling, foff, fsize, _h, nlen = struct.unpack_from("<IIQQII", files, fo)
+            name = files[fo + 0x20:fo + 0x20 + nlen].decode("utf-8")
+            out.append((prefix + name, base + data_off + foff, fsize))
+            fo = sibling
+        co = child_dir
+        while co != 0xFFFFFFFF:
+            _p, sibling, _cd, _cf, _h, nlen = struct.unpack_from("<6I", dirs, co)
+            name = dirs[co + 0x18:co + 0x18 + nlen].decode("utf-8")
+            todo.append((co, prefix + name + "/"))
+            co = sibling
+    return out
+
+
+def nro_to_nso(code):
+    """
+    An (uncompressed) NSO with the code of an .nro: the same program elf2nso
+    makes from the ELF, so the engine can run as an installed title.
+    """
+    if code[0x10:0x14] != b"NRO0":
+        raise ValueError("not an .nro")
+    segments = [struct.unpack_from("<II", code, 0x20 + 8 * i) for i in range(3)]
+    bss = _u32(code, 0x38)
+    build_id = code[0x40:0x60]
+
+    datas = []
+    for i, (mem, size) in enumerate(segments):
+        data = bytearray(code[mem:mem + size])
+        if len(data) != size:
+            raise ValueError("truncated .nro")
+        if i == 0:
+            data[0x10:0x80] = bytes(0x70)   # the NRO header (zeros in the ELF)
+        datas.append(bytes(data))
+
+    hdr = bytearray(0x100)
+    hdr[0:4] = b"NSO0"
+    struct.pack_into("<I", hdr, 0x0C, 0x38)     # check segment hashes, no compression
+    file_off = 0x100
+    for i, (mem, size) in enumerate(segments):
+        struct.pack_into("<IIII", hdr, 0x10 + 0x10 * i, file_off, mem, size, bss if i == 2 else 1)
+        struct.pack_into("<I", hdr, 0x60 + 4 * i, size)
+        hdr[0xA0 + 0x20 * i:0xC0 + 0x20 * i] = hashlib.sha256(datas[i]).digest()
+        file_off += size
+    hdr[0x40:0x60] = build_id
+    return bytes(hdr) + b"".join(datas)
+
+
+class Nro(object):
+    """The renpy-switch.nro from the CI build."""
+
+    def __init__(self, path):
+        self.path = path
+        with open(path, "rb") as f:
+            head = f.read(0x80)
+            if len(head) < 0x80 or head[0x10:0x14] != b"NRO0":
+                raise SystemExit("ERROR: {} is not an .nro file.".format(path))
+            self.size = _u32(head, 0x18)
+            f.seek(self.size)
+            aset = f.read(0x38)
+            if aset[0:4] != b"ASET":
+                raise SystemExit("ERROR: {} has no asset section.".format(path))
+            (_, _, icon_off, icon_size, nacp_off, nacp_size,
+             self.romfs_off, self.romfs_size) = struct.unpack("<4sIQQQQQQ", aset)
+            f.seek(self.size + icon_off)
+            self.icon = f.read(icon_size)
+            f.seek(self.size + nacp_off)
+            self.nacp = f.read(nacp_size)
+        if len(self.nacp) != NACP_SIZE:
+            raise SystemExit("ERROR: unexpected NACP size in {}.".format(path))
+
+    def romfs_files(self):
+        if not self.romfs_size:
+            return []
+        with open(self.path, "rb") as f:
+            return romfs_list(f, self.size + self.romfs_off)
+
+    def read_romfs_file(self, name):
+        for path, off, size in self.romfs_files():
+            if path == name:
+                with open(self.path, "rb") as f:
+                    f.seek(off)
+                    return f.read(size)
         return None
-    with Image.open(io.BytesIO(png_bytes)) as im:
-        im = im.convert("RGBA")
-        bg = Image.new("RGB", im.size, (0, 0, 0))
-        bg.paste(im, mask=im.split()[3])
-        bg = bg.resize((256, 256), Image.LANCZOS)
-        out = io.BytesIO()
-        bg.save(out, "JPEG", quality=92)
-        return out.getvalue()
 
+    def nso(self):
+        with open(self.path, "rb") as f:
+            return nro_to_nso(f.read(self.size))
 
-def rewrite_nro(src, dst, title, author, version, icon_jpeg):
-    """
-    Copies an .nro, replacing the title/author/version in its NACP and,
-    optionally, its icon. The RomFS (Ren'Py runtime) is copied unchanged.
-    """
-    with open(src, "rb") as f:
-        head = f.read(0x20)
-        if head[0x10:0x14] != b"NRO0":
-            raise SystemExit("ERROR: {} is not an .nro file.".format(src))
-        nro_size = struct.unpack_from("<I", head, 0x18)[0]
+    def write(self, dst, nacp, icon):
+        """Copies the .nro with another NACP and icon (the code and RomFS unchanged)."""
 
-        f.seek(nro_size)
-        aset = f.read(0x38)
-        if aset[0:4] != b"ASET":
-            raise SystemExit("ERROR: {} has no asset section.".format(src))
+        def align(x):
+            return (x + 0xF) & ~0xF
 
-        (_, _, icon_off, icon_size, nacp_off, nacp_size, romfs_off, romfs_size) = struct.unpack("<4sIQQQQQQ", aset)
+        icon = icon or self.icon
+        icon_off = align(0x38)
+        nacp_off = align(icon_off + len(icon))
+        romfs_off = align(nacp_off + len(nacp))
 
-        f.seek(nro_size + icon_off)
-        icon = f.read(icon_size)
-        f.seek(nro_size + nacp_off)
-        nacp = bytearray(f.read(nacp_size))
-
-        if len(nacp) != NACP_SIZE:
-            raise SystemExit("ERROR: unexpected NACP size in {}.".format(src))
-
-        def put(offset, size, text):
-            data = text.encode("utf-8")[: size - 1]
-            nacp[offset:offset + size] = data + b"\0" * (size - len(data))
-
-        # 16 language entries of 0x300 bytes: name (0x200) + author (0x100).
-        for lang in range(16):
-            put(lang * 0x300, 0x200, title)
-            put(lang * 0x300 + 0x200, 0x100, author)
-
-        if version:
-            put(0x3060, 0x10, version)
-
-        if icon_jpeg:
-            icon = icon_jpeg
-
-        f.seek(0)
-        with open(dst, "wb") as out:
-            # NRO body.
-            remaining = nro_size
+        with open(self.path, "rb") as f, open(dst, "wb") as out:
+            remaining = self.size
             while remaining:
                 chunk = f.read(min(remaining, 1 << 20))
                 out.write(chunk)
                 remaining -= len(chunk)
 
-            def align(x):
-                return (x + 0xF) & ~0xF
-
-            new_icon_off = align(0x38)
-            new_nacp_off = align(new_icon_off + len(icon))
-            new_romfs_off = align(new_nacp_off + len(nacp))
-
-            out.write(struct.pack("<4sIQQQQQQ", b"ASET", 0,
-                                  new_icon_off, len(icon),
-                                  new_nacp_off, len(nacp),
-                                  new_romfs_off if romfs_size else 0, romfs_size))
+            out.write(struct.pack("<4sIQQQQQQ", b"ASET", 0, icon_off, len(icon), nacp_off, len(nacp),
+                                  romfs_off if self.romfs_size else 0, self.romfs_size))
 
             def pad_to(rel):
-                cur = out.tell() - nro_size
-                out.write(b"\0" * (rel - cur))
+                out.write(b"\0" * (rel - (out.tell() - self.size)))
 
-            pad_to(new_icon_off)
+            pad_to(icon_off)
             out.write(icon)
-            pad_to(new_nacp_off)
-            out.write(bytes(nacp))
+            pad_to(nacp_off)
+            out.write(nacp)
 
-            if romfs_size:
-                pad_to(new_romfs_off)
-                f.seek(nro_size + romfs_off)
-                remaining = romfs_size
+            if self.romfs_size:
+                pad_to(romfs_off)
+                f.seek(self.size + self.romfs_off)
+                remaining = self.romfs_size
                 while remaining:
                     chunk = f.read(min(remaining, 1 << 20))
                     out.write(chunk)
                     remaining -= len(chunk)
 
 
-# ---------------------------------------------------------------------------
-
-
-def make_nro(args, apk_icon, sd_dir, name):
-    icon_jpeg = None
-    if args.icon:
-        with open(args.icon, "rb") as f:
-            icon_jpeg = f.read()
-    elif apk_icon:
-        icon_jpeg = make_icon_jpeg(apk_icon)
-        if icon_jpeg is None:
-            say("(Pillow not installed: keeping the default icon. pip install pillow)")
-
-    os.makedirs(sd_dir, exist_ok=True)
-    dst = os.path.join(sd_dir, name + ".nro")
-    rewrite_nro(args.nro, dst, args.title or name, args.author, args.version, icon_jpeg)
+def make_nro(nro, dst, title, author, version, icon_jpeg):
+    nro.write(dst, make_nacp(nro.nacp, title, author, version), icon_jpeg)
     say("Created {}".format(dst))
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Convert a Ren'Py Android APK for the Switch homebrew build.")
-    ap.add_argument("apk", help="the Ren'Py .apk, or an already converted \"game\" folder (with --pack)")
-    ap.add_argument("-o", "--out", default=None, help="output folder (default: <apk name>-switch)")
-    ap.add_argument("--name", default=None, help="folder name on the SD card, e.g. subahibi")
-    ap.add_argument("--nro", default=None, help="renpy-switch.nro from the CI build, to copy and rename")
-    ap.add_argument("--title", default=None, help="title in the Homebrew Menu (with --nro)")
-    ap.add_argument("--author", default="Ren'Py", help="author in the Homebrew Menu (with --nro)")
-    ap.add_argument("--version", default=None, help="version in the Homebrew Menu (with --nro)")
-    ap.add_argument("--icon", default=None, help="256x256 JPEG icon (with --nro); default: from the APK")
-    ap.add_argument("--no-controls", action="store_true", help="do not add zz_switch_controls.rpy")
-    ap.add_argument("--convert-avif", action="store_true", help="convert AVIF images (needs Pillow >= 11.2)")
-    ap.add_argument("--force", action="store_true", help="overwrite an existing game folder")
-    ap.add_argument("--pack", action="store_true",
-                    help="pack images/audio/video into a few .rpa archives (fast to copy)")
-    ap.add_argument("--pack-size", type=int, default=1900,
-                    help="maximum size of one archive in MB (default 1900; FAT32 limit is 4096)")
-    args = ap.parse_args()
+# ---------------------------------------------------------------------------
+# Installable NSP: the engine and the game in one title for the HOME menu.
+# The NCAs are made by hacbrewpack with the user's own keys.
 
-    # Pack an existing game folder in place.
-    if os.path.isdir(args.apk):
-        game_dir = os.path.abspath(args.apk)
-        if os.path.isdir(os.path.join(game_dir, "game")):
-            game_dir = os.path.join(game_dir, "game")
-        if not args.pack:
-            raise SystemExit("ERROR: {} is a folder; add --pack to pack it.".format(game_dir))
-        pack_game(game_dir, args.pack_size * 1024 * 1024)
-        say("")
-        say("Done. Copy {} to the SD card (replace the old game folder).".format(game_dir))
-        return
+HERE = os.path.dirname(os.path.abspath(__file__))
 
-    apk_path = os.path.abspath(args.apk)
-    base = os.path.splitext(os.path.basename(apk_path))[0]
-    name = args.name or base.split("-")[0].lower() or "renpygame"
-    out = os.path.abspath(args.out or (os.path.splitext(apk_path)[0] + "-switch"))
 
-    sd_dir = os.path.join(out, "switch", name)
-    out_game = os.path.join(sd_dir, "game")
+def default_title_id(name):
+    """A stable title id per game: 01f + 40 bits of a hash + 000."""
+    h = hashlib.sha1(("renpy-switch:" + name.lower()).encode("utf-8")).hexdigest()
+    return int("01f" + h[:10] + "000", 16)
 
-    if os.path.exists(out_game) and not args.force:
-        # The game was converted before: only (re)make the .nro.
-        if not args.nro:
-            raise SystemExit("ERROR: {} already exists (use --force to replace it).".format(out_game))
-        say("The game folder already exists, keeping it as is:")
-        say("  {}".format(out_game))
-        say("Only updating the .nro (use --force to convert the game again).")
-        with zipfile.ZipFile(apk_path) as apk:
-            apk_icon = find_apk_icon(apk)
-        make_nro(args, apk_icon, sd_dir, name)
-        say("Copy {} to sdmc:/switch/{}/ (replace the old one).".format(name + ".nro", name))
-        return
 
-    if os.path.exists(out_game):
-        shutil.rmtree(out_game)
+def find_file(explicit, candidates, what):
+    if explicit:
+        if not os.path.isfile(explicit):
+            raise SystemExit("ERROR: {} not found: {}".format(what, explicit))
+        return os.path.abspath(explicit)
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return os.path.abspath(c)
+    return None
 
+
+def find_hacbrewpack(explicit):
+    exe = "hacbrewpack.exe" if os.name == "nt" else "hacbrewpack"
+    found = find_file(explicit, [os.path.join(HERE, exe), os.path.join(os.getcwd(), exe),
+                                 shutil.which("hacbrewpack")], "hacbrewpack")
+    if not found:
+        raise SystemExit(
+            "ERROR: {} not found.\n"
+            "Download the hacbrewpack artifact from the same CI run as renpy-switch.nro\n"
+            "and put {} next to apk2switch.py (or use --hacbrewpack PATH).".format(exe, exe))
+    return found
+
+
+def find_keys(explicit):
+    home = os.path.expanduser("~")
+    found = find_file(explicit, [os.path.join(HERE, "prod.keys"), os.path.join(HERE, "keys.txt"),
+                                 os.path.join(HERE, "keys.dat"), os.path.join(os.getcwd(), "prod.keys"),
+                                 os.path.join(home, ".switch", "prod.keys")], "keys file")
+    if not found:
+        raise SystemExit(
+            "ERROR: prod.keys not found.\n"
+            "Dump the keys of your own console (Lockpick_RCM) and put prod.keys next to\n"
+            "apk2switch.py, into %USERPROFILE%\\.switch\\, or use --keys PATH.")
+    return found
+
+
+def link_or_copy(src, dst, state):
+    if state.get("link", True):
+        try:
+            os.link(src, dst)
+            return
+        except OSError:
+            state["link"] = False
+    shutil.copyfile(src, dst)
+
+
+def make_nsp(args, nro, game_dir, name, title, author, version, icon, icon_why, out_dir):
+    hbp = find_hacbrewpack(args.hacbrewpack)
+    keys = find_keys(args.keys)
+
+    if icon is None:
+        say("WARNING: no icon ({}); the NSP gets the engine's default icon.".format(icon_why))
+        icon = nro.icon
+
+    if args.title_id:
+        tid = int(args.title_id, 16)
+        if not (0x0100000000000000 <= tid <= 0x0FFFFFFFFFFFFFFF) or tid & 0xFFF:
+            raise SystemExit("ERROR: the title id must be 0100000000000000..0fffffffffffffff and end in 000.")
+    else:
+        tid = default_title_id(name)
+
+    npdm = nro.read_romfs_file("nsp/main.npdm")
+    if npdm is None:
+        raise SystemExit("ERROR: this renpy-switch.nro is too old to make an NSP; download a newer build.")
+
+    game_files = []
+    game_size = 0
+    for root, _dirs, files in os.walk(game_dir):
+        for fn in files:
+            full = os.path.join(root, fn)
+            game_files.append((full, os.path.relpath(full, game_dir)))
+            game_size += os.path.getsize(full)
+
+    tmp_parent = os.path.abspath(args.temp or out_dir)
+    os.makedirs(tmp_parent, exist_ok=True)
+    need = 2 * game_size + 512 * 1024 * 1024
+    free = shutil.disk_usage(tmp_parent).free
+    if free < need:
+        raise SystemExit("ERROR: not enough free space in {} for the NSP: need about {}, have {}.\n"
+                         "Free some space or use --temp D:\\somewhere.".format(tmp_parent, human(need), human(free)))
+
+    work = os.path.join(tmp_parent, "nsp-tmp")
+    if os.path.exists(work):
+        shutil.rmtree(work)
+    for d in ("exefs", "romfs", "control"):
+        os.makedirs(os.path.join(work, d))
+
+    say("")
+    say("Making the NSP (title id {:016x}) ...".format(tid))
+
+    # ExeFS: the engine's code and permissions.
+    with open(os.path.join(work, "exefs", "main"), "wb") as f:
+        f.write(nro.nso())
+    with open(os.path.join(work, "exefs", "main.npdm"), "wb") as f:
+        f.write(npdm)
+
+    # RomFS: the engine's runtime files, then the game.
+    romfs = os.path.join(work, "romfs")
+    with open(nro.path, "rb") as f:
+        for path, off, size in nro.romfs_files():
+            if path.startswith(("nsp/", "Contents/game/")):
+                continue
+            dst = os.path.join(romfs, *path.split("/"))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            f.seek(off)
+            with open(dst, "wb") as out:
+                remaining = size
+                while remaining:
+                    chunk = f.read(min(remaining, 1 << 20))
+                    out.write(chunk)
+                    remaining -= len(chunk)
+
+    say("Adding the game ({}) ...".format(human(game_size)))
+    state = {}
+    game_root = os.path.join(romfs, "Contents", "game")
+    for full, rel in game_files:
+        dst = os.path.join(game_root, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        link_or_copy(full, dst, state)
+
+    # Saves: the same folder as the .nro version of the game.
+    with open(os.path.join(romfs, "Contents", "switch.cfg"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("save_dir=sdmc:/switch/{}/save/\n".format(name))
+
+    # Control: title, version and an icon for every language.
+    with open(os.path.join(work, "control", "control.nacp"), "wb") as f:
+        f.write(make_nacp(nro.nacp, title, author, version, installable=True))
+    for lang in NACP_LANGUAGES:
+        with open(os.path.join(work, "control", "icon_{}.dat".format(lang)), "wb") as f:
+            f.write(icon)
+
+    if os.name == "nt":
+        longest = max(len(os.path.join(root, fn)) for root, _d, files in os.walk(work) for fn in files)
+        if longest > 250:
+            raise SystemExit("ERROR: file paths get too long for hacbrewpack ({} characters).\n"
+                             "Use a short temporary folder, e.g. --temp C:\\nsp".format(longest))
+
+    # hacbrewpack gets short relative paths only (it can't take every
+    # character on a Windows command line); the keys are copied in for the run.
+    shutil.copyfile(keys, os.path.join(work, "keys.dat"))
+    cmd = [hbp, "-k", "keys.dat", "--exefsdir", "exefs", "--romfsdir", "romfs",
+           "--controldir", "control", "--nologo", "--titleid", "{:016x}".format(tid),
+           "--nspdir", "nsp", "--ncadir", "nca", "--tempdir", "temp", "--backupdir", "backup"]
+    say("Running hacbrewpack (this takes a while for a big game) ...")
+    try:
+        rc = subprocess.call(cmd, cwd=work)
+    finally:
+        try:
+            os.remove(os.path.join(work, "keys.dat"))
+        except OSError:
+            pass
+
+    built = os.path.join(work, "nsp", "{:016x}.nsp".format(tid))
+    if rc != 0 or not os.path.isfile(built):
+        raise SystemExit("ERROR: hacbrewpack failed (exit code {}). The files are in {}".format(rc, work))
+
+    dst = os.path.join(out_dir, name + ".nsp")
+    if os.path.exists(dst):
+        os.remove(dst)
+    shutil.move(built, dst)
+
+    if not args.keep_temp:
+        shutil.rmtree(work, ignore_errors=True)
+
+    say("Created {} ({})".format(dst, human(os.path.getsize(dst))))
+    return dst, tid
+
+
+# ---------------------------------------------------------------------------
+
+
+def add_controls(out_game):
+    controls = CONTROLS_RPY
+    for candidate in (os.path.join(HERE, "zz_switch_controls.rpy"),
+                      os.path.join(HERE, "..", "switch", "game_addons", "zz_switch_controls.rpy")):
+        if os.path.exists(candidate):
+            with open(candidate, "r", encoding="utf-8") as f:
+                controls = f.read()
+            break
+    with open(os.path.join(out_game, "zz_switch_controls.rpy"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(controls)
+    say("Added zz_switch_controls.rpy.")
+
+
+def convert_apk(args, apk, apk_path, out_game):
     os.makedirs(out_game, exist_ok=True)
 
-    with zipfile.ZipFile(apk_path) as apk:
-        names = extract_game(apk, out_game)
+    names = extract_game(apk.zip, out_game)
 
-        # Presplash.
-        if not any(os.path.exists(os.path.join(out_game, "presplash" + e)) for e in (".png", ".jpg")):
-            data = read_member(apk, "assets/android-presplash.jpg") or read_member(apk, "assets/android-presplash.png")
-            if data:
-                ext = ".png" if data[:4] == b"\x89PNG" else ".jpg"
-                with open(os.path.join(out_game, "presplash" + ext), "wb") as f:
-                    f.write(data)
-                say("Added presplash{} from the APK.".format(ext))
-
-        apk_icon = find_apk_icon(apk)
+    # Presplash.
+    if not any(os.path.exists(os.path.join(out_game, "presplash" + e)) for e in (".png", ".jpg")):
+        data = apk.read("assets/android-presplash.jpg") or apk.read("assets/android-presplash.png")
+        if data:
+            ext = ".png" if data[:4] == b"\x89PNG" else ".jpg"
+            with open(os.path.join(out_game, "presplash" + ext), "wb") as f:
+                f.write(data)
+            say("Added presplash{} from the APK.".format(ext))
 
     if not args.no_controls:
-        controls = CONTROLS_RPY
-        here = os.path.dirname(os.path.abspath(__file__))
-        for candidate in (os.path.join(here, "zz_switch_controls.rpy"),
-                          os.path.join(here, "..", "switch", "game_addons", "zz_switch_controls.rpy")):
-            if os.path.exists(candidate):
-                with open(candidate, "r", encoding="utf-8") as f:
-                    controls = f.read()
-                break
-        with open(os.path.join(out_game, "zz_switch_controls.rpy"), "w", encoding="utf-8", newline="\n") as f:
-            f.write(controls)
-        say("Added zz_switch_controls.rpy.")
+        add_controls(out_game)
 
     report = check_game(out_game, names)
     print_report(report)
@@ -635,19 +1261,119 @@ def main():
     if args.pack:
         pack_game(out_game, args.pack_size * 1024 * 1024)
 
+
+def main():
+    ap = argparse.ArgumentParser(description="Convert a Ren'Py Android APK for the Switch build of Ren'Py.")
+    ap.add_argument("apk", help="the Ren'Py .apk, or an already converted \"game\" folder")
+    ap.add_argument("-o", "--out", default=None, help="output folder (default: <apk name>-switch)")
+    ap.add_argument("--name", default=None, help="folder name on the SD card, e.g. subahibi")
+    ap.add_argument("--nro", default=None, help="renpy-switch.nro from the CI build (the engine)")
+    ap.add_argument("--nsp", action="store_true",
+                    help="also make an installable .nsp with the game inside (needs --nro, hacbrewpack, prod.keys)")
+    ap.add_argument("--title", default=None, help="title in the menus (default: the APK's name)")
+    ap.add_argument("--author", default="Ren'Py", help="author / publisher in the menus")
+    ap.add_argument("--version", default=None, help="version in the menus (default: the APK's version)")
+    ap.add_argument("--icon", default=None, help="icon picture (any format, cropped to a square; default: from the APK)")
+    ap.add_argument("--keys", default=None, help="prod.keys for --nsp (default: next to this script or ~/.switch/)")
+    ap.add_argument("--hacbrewpack", default=None, help="hacbrewpack for --nsp (default: next to this script)")
+    ap.add_argument("--title-id", default=None, help="title id for --nsp (default: made from --name)")
+    ap.add_argument("--temp", default=None, help="folder for the temporary files of --nsp (default: the output folder)")
+    ap.add_argument("--keep-temp", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--no-controls", action="store_true", help="do not add zz_switch_controls.rpy")
+    ap.add_argument("--convert-avif", action="store_true", help="convert AVIF images (needs Pillow >= 11.2)")
+    ap.add_argument("--force", action="store_true", help="overwrite an existing game folder")
+    ap.add_argument("--pack", action="store_true",
+                    help="pack images/audio/video into a few .rpa archives (fast to copy)")
+    ap.add_argument("--pack-size", type=int, default=1900,
+                    help="maximum size of one archive in MB (default 1900; FAT32 limit is 4096)")
+    args = ap.parse_args()
+
+    if args.nsp and not args.nro:
+        raise SystemExit("ERROR: --nsp needs --nro renpy-switch.nro (the engine from the CI build).")
+
+    apk = None
+    converted = False
+
+    if os.path.isdir(args.apk):
+        # An already converted game folder (sdmc layout: .../switch/<name>/game).
+        game_dir = os.path.abspath(args.apk)
+        if os.path.isdir(os.path.join(game_dir, "game")):
+            game_dir = os.path.join(game_dir, "game")
+        if not (args.pack or args.nro):
+            raise SystemExit("ERROR: {} is a folder; add --pack and/or --nro (--nsp).".format(game_dir))
+        sd_dir = os.path.dirname(game_dir)
+        name = args.name or os.path.basename(sd_dir) or "renpygame"
+        parent = os.path.dirname(sd_dir)
+        out = os.path.dirname(parent) if os.path.basename(parent).lower() == "switch" else sd_dir
+        if args.pack:
+            pack_game(game_dir, args.pack_size * 1024 * 1024)
+            if not args.nro:
+                say("")
+                say("Done. Copy {} to the SD card (replace the old game folder).".format(game_dir))
+                return
+    else:
+        apk_path = os.path.abspath(args.apk)
+        base = os.path.splitext(os.path.basename(apk_path))[0]
+        name = args.name or base.split("-")[0].lower() or "renpygame"
+        out = os.path.abspath(args.out or (os.path.splitext(apk_path)[0] + "-switch"))
+        sd_dir = os.path.join(out, "switch", name)
+        game_dir = os.path.join(sd_dir, "game")
+        apk = ApkInfo(apk_path)
+
+        if os.path.exists(game_dir) and not args.force:
+            if not args.nro:
+                raise SystemExit("ERROR: {} already exists (use --force to replace it).".format(game_dir))
+            say("The game folder already exists, keeping it as is:")
+            say("  {}".format(game_dir))
+            say("(use --force to convert the game again)")
+        else:
+            if os.path.exists(game_dir):
+                shutil.rmtree(game_dir)
+            convert_apk(args, apk, apk_path, game_dir)
+            converted = True
+
+    nsp = None
     if args.nro:
-        make_nro(args, apk_icon, sd_dir, name)
+        title = args.title or (apk.label() if apk else None) or name
+        version = args.version or (apk.version_name() if apk else None)
+        icon, why = choose_icon(args, apk, game_dir)
+        say("")
+        say("Title: {}   version: {}".format(title, version or "-"))
+        if icon:
+            say("Icon: from {}.".format(why))
+        else:
+            say("WARNING: no icon: {}.".format(why))
+
+        nro = Nro(args.nro)
+        os.makedirs(sd_dir, exist_ok=True)
+        make_nro(nro, os.path.join(sd_dir, name + ".nro"), title, args.author, version, icon)
+        if args.nsp:
+            nsp = make_nsp(args, nro, game_dir, name, title, args.author, version, icon, why, out)
 
     say("")
-    say("Done. Copy the folder")
-    say("  {}".format(os.path.join(out, "switch")))
-    say("to the root of the SD card, so that you get")
-    say("  sdmc:/switch/{0}/{0}.nro".format(name))
-    say("  sdmc:/switch/{}/game/".format(name))
-    if not args.nro:
-        say("and put renpy-switch.nro into sdmc:/switch/{0}/ (any name works).".format(name))
-    say("Start it from the Homebrew Menu opened by holding R while launching a game")
-    say("(full memory mode). Saves go to sdmc:/switch/{}/save/.".format(name))
+    if converted:
+        say("Done. Copy the folder")
+        say("  {}".format(os.path.join(out, "switch")))
+        say("to the root of the SD card, so that you get")
+        say("  sdmc:/switch/{0}/{0}.nro".format(name))
+        say("  sdmc:/switch/{}/game/".format(name))
+        if not args.nro:
+            say("and put renpy-switch.nro into sdmc:/switch/{0}/ (any name works).".format(name))
+        say("Start it from the Homebrew Menu opened by holding R while launching a game")
+        say("(full memory mode). Saves go to sdmc:/switch/{}/save/.".format(name))
+    elif args.nro:
+        say("Done. Copy {}.nro to sdmc:/switch/{}/ (replace the old one).".format(name, name))
+
+    if nsp:
+        say("")
+        say("NSP: {}".format(nsp[0]))
+        say("  Install it with DBI, Tinfoil, Goldleaf or another installer (your console")
+        say("  needs sigpatches) and start it from the HOME menu. The game is inside the")
+        say("  NSP, so it needs no game folder on the SD card. Saves go to")
+        say("  sdmc:/switch/{}/save/, the same as the .nro version.".format(name))
+
+    if apk is not None:
+        apk.zip.close()
 
 
 if __name__ == "__main__":

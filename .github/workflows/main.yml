@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fix line endings
-        run: sed -i 's/\r$//' setup.bash build.bash pack_nro.bash
+        run: sed -i 's/\r$//' setup.bash build.bash pack_nro.bash scripts/nsp_tools.bash
 
       - name: Cache Ren'Py downloads
         uses: actions/cache@v4
@@ -66,20 +66,27 @@ jobs:
           set -o pipefail
           bash build.bash 2>&1 | tee build.log
 
-      - name: Upload launcher (.nro)
-        uses: actions/upload-artifact@v4
-        with:
-          name: renpy-switch-nro
-          path: raw/renpy-switch.nro
-
       - name: Upload re-packaging kit (ELF + RomFS + NSO)
         uses: actions/upload-artifact@v4
         with:
           name: renpy-switch-raw
           path: |
             raw/renpy-switch.elf
-            raw/exefs/main
+            raw/exefs
             raw/romfs
+
+      # hacbrewpack for making NSPs on the user's PC, and a test NSP made the
+      # way apk2switch.py makes them (unpacked again and checked with hactool).
+      - name: NSP tools and checks
+        run: |
+          set -o pipefail
+          bash scripts/nsp_tools.bash 2>&1 | tee nsp.log
+
+      - name: Upload engine + converter + hacbrewpack
+        uses: actions/upload-artifact@v4
+        with:
+          name: renpy-switch
+          path: dist/
 
       # Logs on GitHub's storage are not always reachable for debugging, so the
       # logs are also pushed to the "ci-logs" branch, and on failure the first
@@ -87,7 +94,7 @@ jobs:
       - name: Report errors
         if: failure()
         run: |
-          grep -h -n -E "error|Error|undefined reference|No such file|Traceback|not found" setup.log build.log 2>/dev/null \
+          grep -h -n -E "error|Error|undefined reference|No such file|Traceback|not found|FAIL" setup.log build.log nsp.log 2>/dev/null \
             | grep -v -E "^[0-9]+:(  |\+)?-W|Werror=" | head -10 | while IFS= read -r l; do
               l="${l//'%'/'%25'}"; echo "::error::${l:0:900}"
             done || true
@@ -101,7 +108,7 @@ jobs:
           URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           rm -rf /tmp/cilog
           git clone -q --depth 1 -b ci-logs "$URL" /tmp/cilog 2>/dev/null || (mkdir -p /tmp/cilog && git -C /tmp/cilog init -q -b ci-logs)
-          cp setup.log build.log /tmp/cilog/ 2>/dev/null || true
+          cp setup.log build.log nsp.log /tmp/cilog/ 2>/dev/null || true
           [ -d build-switch/cmake/CMakeFiles ] && cp build-switch/cmake/CMakeFiles/CMake*.log /tmp/cilog/ 2>/dev/null || true
           echo "${GITHUB_RUN_ID} ${GITHUB_SHA} ${{ job.status }}" > /tmp/cilog/RUN.txt
           if [ -d raw ]; then

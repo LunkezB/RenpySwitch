@@ -6,6 +6,7 @@
 #                            together with the game's "game" folder
 #   raw/renpy-switch.elf     ELF, for re-packing with a custom title/icon
 #   raw/exefs/main           NSO, for ExeFS / installable builds
+#   raw/exefs/main.npdm      NPDM for installable builds (also in the RomFS)
 #   raw/romfs/               runtime RomFS (Ren'Py + CPython stdlib)
 set -euo pipefail
 
@@ -129,8 +130,14 @@ else
     echo ">>>          .py files will be compiled on the console at every start."
 fi
 
+# NPDM for installable (NSP) builds. apk2switch takes it from the .nro's
+# RomFS, together with the code, and hacbrewpack sets each game's title id.
+mkdir -p raw/exefs raw/romfs/nsp
+npdmtool switch/npdm.json raw/exefs/main.npdm
+cp raw/exefs/main.npdm raw/romfs/nsp/main.npdm
+
 # Sanity check: files Ren'Py needs at runtime.
-for f in Contents/renpy.py Contents/renpy/bootstrap.py Contents/renpy/common/00start.rpyc \
+for f in nsp/main.npdm Contents/renpy.py Contents/renpy/bootstrap.py Contents/renpy/common/00start.rpyc \
          Contents/renpy/common/_layout/screen_main_menu.rpym Contents/renpy/gl2/assimp.py \
          python/lib/python3.14/os.py python/site/six.py python/site/ecdsa/__init__.py \
          python/site/_posixsubprocess.py python/site/_switch_compat.py; do

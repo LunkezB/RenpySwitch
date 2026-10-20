@@ -122,6 +122,34 @@ static void mkdirs(const char *path)
     mkdir(tmp, 0777);
 }
 
+/*
+ * Reads "key=value" from romfs:/Contents/switch.cfg (written by apk2switch
+ * into NSP builds) into out. Returns 1 if the key was found.
+ */
+static int read_cfg(const char *key, char *out, size_t out_size)
+{
+    FILE *f = fopen("romfs:/Contents/switch.cfg", "r");
+    if (!f) {
+        return 0;
+    }
+
+    char line[FS_MAX_PATH + 64];
+    size_t key_len = strlen(key);
+    int found = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strncmp(line, key, key_len) == 0 && line[key_len] == '=') {
+            snprintf(out, out_size, "%s", line + key_len + 1);
+            found = 1;
+            break;
+        }
+    }
+
+    fclose(f);
+    return found;
+}
+
 static void choose_paths(int argc, char *argv[])
 {
     /* Directory of the .nro (NRO launches get argv[0] = sdmc:/switch/x/x.nro). */
@@ -144,9 +172,16 @@ static void choose_paths(int argc, char *argv[])
         snprintf(g_game_dir, sizeof(g_game_dir), "sdmc:/switch/renpy/game");
     }
 
-    /* Save directory. */
+    /* Save directory. An NSP build names its own (the same folder as the
+     * game's .nro, so both share saves); otherwise one per program id. */
+    char cfg_save[FS_MAX_PATH];
+
     if (nro_dir[0]) {
         snprintf(g_save_dir, sizeof(g_save_dir), "%s/save/", nro_dir);
+    } else if (read_cfg("save_dir", cfg_save, sizeof(cfg_save)) &&
+               strncmp(cfg_save, "sdmc:/", 6) == 0 && strlen(cfg_save) < FS_MAX_PATH - 2) {
+        size_t n = strlen(cfg_save);
+        snprintf(g_save_dir, sizeof(g_save_dir), "%s%s", cfg_save, cfg_save[n - 1] == '/' ? "" : "/");
     } else {
         u64 program_id = 0;
         svcGetInfo(&program_id, InfoType_ProgramId, CUR_PROCESS_HANDLE, 0);
