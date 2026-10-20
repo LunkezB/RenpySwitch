@@ -67,130 +67,130 @@ renpy.pygame.scrap is out of date.
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/style.pyx -o tmp/gen3-static/renpy.style.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/encryption.pyx -o tmp/gen3-static/renpy.encryption.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/audio/renpysound.pyx -o tmp/gen3-static/renpy.audio.renpysound.c
-- renpy.cslots ----------------------------------------------------------------
-- renpy.encryption ------------------------------------------------------------
 - renpy.lexersupport ----------------------------------------------------------
-- renpy.pydict ----------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/audio/filter.pyx -o tmp/gen3-static/renpy.audio.filter.c
+- renpy.pydict ----------------------------------------------------------------
+- renpy.encryption ------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/styledata/styleclass.pyx -o tmp/gen3-static/renpy.styledata.styleclass.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/styledata/stylesets.pyx -o tmp/gen3-static/renpy.styledata.stylesets.c
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_hover_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_hover_functions.c
 - renpy.astsupport ------------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_hover_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_hover_functions.c
+- renpy.style -----------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_idle_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_idle_functions.c
+- renpy.cslots ----------------------------------------------------------------
 - _renpy ----------------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_insensitive_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_insensitive_functions.c
-- renpy.style -----------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_functions.c
 - renpy.audio.renpysound ------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_hover_functions.pyx -o tmp/gen3-static/renpy.styledata.style_hover_functions.c
 - renpy.styledata.stylesets ---------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_idle_functions.pyx -o tmp/gen3-static/renpy.styledata.style_idle_functions.c
-- renpy.styledata.style_selected_idle_functions -------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_insensitive_functions.pyx -o tmp/gen3-static/renpy.styledata.style_insensitive_functions.c
 - renpy.audio.filter ----------------------------------------------------------
-- renpy.styledata.style_selected_hover_functions ------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_insensitive_functions.pyx -o tmp/gen3-static/renpy.styledata.style_insensitive_functions.c
 - renpy.styledata.styleclass --------------------------------------------------
+- renpy.styledata.style_selected_hover_functions ------------------------------
+- renpy.styledata.style_selected_idle_functions -------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_functions.pyx -o tmp/gen3-static/renpy.styledata.style_functions.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_activate_functions.pyx -o tmp/gen3-static/renpy.styledata.style_activate_functions.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./tmp/gen3-static/style_selected_activate_functions.pyx -o tmp/gen3-static/renpy.styledata.style_selected_activate_functions.c
 - renpy.styledata.style_selected_insensitive_functions ------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/display/matrix.pyx -o tmp/gen3-static/renpy.display.matrix.c
+- renpy.styledata.style_hover_functions ---------------------------------------
 - renpy.styledata.style_selected_functions ------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/display/render.pyx -o tmp/gen3-static/renpy.display.render.c
-- renpy.styledata.style_hover_functions ---------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/display/accelerator.pyx -o tmp/gen3-static/renpy.display.accelerator.c
 - renpy.styledata.style_idle_functions ----------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/display/quaternion.pyx -o tmp/gen3-static/renpy.display.quaternion.c
 - renpy.styledata.style_activate_functions ------------------------------------
-- renpy.styledata.style_selected_activate_functions ---------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/uguu/gl.pyx -o tmp/gen3-static/renpy.uguu.gl.c
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/uguu/uguu.pyx -o tmp/gen3-static/renpy.uguu.uguu.c
 - renpy.styledata.style_insensitive_functions ---------------------------------
-- renpy.display.matrix --------------------------------------------------------
+- renpy.styledata.style_selected_activate_functions ---------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/uguu/uguu.pyx -o tmp/gen3-static/renpy.uguu.uguu.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2mesh.pyx -o tmp/gen3-static/renpy.gl2.gl2mesh.c
+- renpy.display.matrix --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2mesh2.pyx -o tmp/gen3-static/renpy.gl2.gl2mesh2.c
-- renpy.display.render --------------------------------------------------------
-- renpy.styledata.style_functions ---------------------------------------------
 - renpy.display.quaternion ----------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2mesh3.pyx -o tmp/gen3-static/renpy.gl2.gl2mesh3.c
+- renpy.styledata.style_functions ---------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2polygon.pyx -o tmp/gen3-static/renpy.gl2.gl2polygon.c
+- renpy.display.render --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2model.pyx -o tmp/gen3-static/renpy.gl2.gl2model.c
 - renpy.display.accelerator ---------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2draw.pyx -o tmp/gen3-static/renpy.gl2.gl2draw.c
 - renpy.gl2.gl2mesh -----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2texture.pyx -o tmp/gen3-static/renpy.gl2.gl2texture.c
-- renpy.uguu.gl ---------------------------------------------------------------
 - renpy.gl2.gl2mesh2 ----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2uniform.pyx -o tmp/gen3-static/renpy.gl2.gl2uniform.c
+- renpy.uguu.gl ---------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/gl2/gl2shader.pyx -o tmp/gen3-static/renpy.gl2.gl2shader.c
-- renpy.gl2.gl2polygon --------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/textsupport.pyx -o tmp/gen3-static/renpy.text.textsupport.c
-- renpy.uguu.uguu -------------------------------------------------------------
 - renpy.gl2.gl2mesh3 ----------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/textsupport.pyx -o tmp/gen3-static/renpy.text.textsupport.c
+- renpy.gl2.gl2polygon --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/texwrap.pyx -o tmp/gen3-static/renpy.text.texwrap.c
+- renpy.uguu.uguu -------------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/ftfont.pyx -o tmp/gen3-static/renpy.text.ftfont.c
 - renpy.gl2.gl2model ----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/hbfont.pyx -o tmp/gen3-static/renpy.text.hbfont.c
-- renpy.text.texwrap ----------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/bidi.pyx -o tmp/gen3-static/renpy.text.bidi.c
 - renpy.gl2.gl2shader ---------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/text/bidi.pyx -o tmp/gen3-static/renpy.text.bidi.c
+- renpy.text.texwrap ----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/error.pyx -o tmp/gen3-static/renpy.pygame.error.c
 - renpy.gl2.gl2texture --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/color.pyx -o tmp/gen3-static/renpy.pygame.color.c
 - renpy.gl2.gl2draw -----------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/controller.pyx -o tmp/gen3-static/renpy.pygame.controller.c
 - renpy.text.ftfont -----------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/rect.pyx -o tmp/gen3-static/renpy.pygame.rect.c
-- renpy.gl2.gl2uniform --------------------------------------------------------
 - renpy.text.bidi -------------------------------------------------------------
-- renpy.text.hbfont -----------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/controller.pyx -o tmp/gen3-static/renpy.pygame.controller.c
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/rect.pyx -o tmp/gen3-static/renpy.pygame.rect.c
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/rwobject.pyx -o tmp/gen3-static/renpy.pygame.rwobject.c
-- renpy.text.textsupport ------------------------------------------------------
+- renpy.text.hbfont -----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/surface.pyx -o tmp/gen3-static/renpy.pygame.surface.c
+- renpy.gl2.gl2uniform --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/display.pyx -o tmp/gen3-static/renpy.pygame.display.c
 - renpy.pygame.error ----------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/event.pyx -o tmp/gen3-static/renpy.pygame.event.c
+- renpy.text.textsupport ------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/locals.pyx -o tmp/gen3-static/renpy.pygame.locals.c
-- renpy.pygame.controller -----------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/key.pyx -o tmp/gen3-static/renpy.pygame.key.c
 - renpy.pygame.color ----------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/mouse.pyx -o tmp/gen3-static/renpy.pygame.mouse.c
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/key.pyx -o tmp/gen3-static/renpy.pygame.key.c
+- renpy.pygame.controller -----------------------------------------------------
 - renpy.pygame.rect -----------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/mouse.pyx -o tmp/gen3-static/renpy.pygame.mouse.c
+- renpy.pygame.rwobject -------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/joystick.pyx -o tmp/gen3-static/renpy.pygame.joystick.c
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/power.pyx -o tmp/gen3-static/renpy.pygame.power.c
+- renpy.pygame.surface --------------------------------------------------------
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/pygame_time.pyx -o tmp/gen3-static/renpy.pygame.pygame_time.c
 - renpy.pygame.display --------------------------------------------------------
 warning: renpy/pygame/display.pxd:37:0: Assignment in pxd file will not be executed. Suggest declaring as const.
 
 
-- renpy.pygame.rwobject -------------------------------------------------------
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/power.pyx -o tmp/gen3-static/renpy.pygame.power.c
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/pygame_time.pyx -o tmp/gen3-static/renpy.pygame.pygame_time.c
-- renpy.pygame.locals ---------------------------------------------------------
-- renpy.pygame.surface --------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/image.pyx -o tmp/gen3-static/renpy.pygame.image.c
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/transform.pyx -o tmp/gen3-static/renpy.pygame.transform.c
 - renpy.pygame.event ----------------------------------------------------------
 warning: renpy/pygame/display.pxd:37:0: Assignment in pxd file will not be executed. Suggest declaring as const.
 
 
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/transform.pyx -o tmp/gen3-static/renpy.pygame.transform.c
+- renpy.pygame.locals ---------------------------------------------------------
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/gfxdraw.pyx -o tmp/gen3-static/renpy.pygame.gfxdraw.c
+- renpy.pygame.mouse ----------------------------------------------------------
+warning: renpy/pygame/display.pxd:37:0: Assignment in pxd file will not be executed. Suggest declaring as const.
+
+
+/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/draw.pyx -o tmp/gen3-static/renpy.pygame.draw.c
 - renpy.pygame.key ------------------------------------------------------------
 warning: renpy/pygame/display.pxd:37:0: Assignment in pxd file will not be executed. Suggest declaring as const.
 warning: renpy/pygame/key.pyx:43:8: Assigning to 'uint8_t *' from 'const Uint8 *' discards const qualifier
 
 
-/__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/draw.pyx -o tmp/gen3-static/renpy.pygame.draw.c
-- renpy.pygame.mouse ----------------------------------------------------------
-warning: renpy/pygame/display.pxd:37:0: Assignment in pxd file will not be executed. Suggest declaring as const.
-
-
 /__w/RenpySwitch/RenpySwitch/.venv/bin/cython -Isrc -Isrc/pygame/include -Itmp/gen3-static -I. -X profile=False -X embedsignature=True -X embedsignature.format=python ./renpy/pygame/scrap.pyx -o tmp/gen3-static/renpy.pygame.scrap.c
+- renpy.pygame.power ----------------------------------------------------------
 - renpy.pygame.joystick -------------------------------------------------------
 warning: renpy/pygame/joystick.pyx:85:29: Assigning to 'char *' from 'const char *' discards const qualifier
 
 
-- renpy.pygame.image ----------------------------------------------------------
-- renpy.pygame.power ----------------------------------------------------------
 - renpy.pygame.pygame_time ----------------------------------------------------
+- renpy.pygame.image ----------------------------------------------------------
 - renpy.pygame.transform ------------------------------------------------------
 - renpy.pygame.scrap ----------------------------------------------------------
 - renpy.pygame.gfxdraw --------------------------------------------------------
@@ -215,9 +215,9 @@ warning: renpy/pygame/joystick.pyx:85:29: Assigning to 'char *' from 'const char
 -- Configuring done (0.5s)
 -- Generating done (0.0s)
 -- Build files have been written to: /__w/RenpySwitch/RenpySwitch/build-switch/cmake
+[  1%] Building C object CMakeFiles/renpy-switch.dir/source/main.o
 [  4%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/_renpy.o
 [  4%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/src/IMG_savepng.o
-[  4%] Building C object CMakeFiles/renpy-switch.dir/source/main.o
 [  5%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/src/core.o
 In file included from /opt/devkitpro/portlibs/switch/include/python3.14/Python.h:14,
                  from /__w/RenpySwitch/RenpySwitch/switch/source/main.c:25:
@@ -289,11 +289,11 @@ In file included from /opt/devkitpro/devkitA64/aarch64-none-elf/include/machine/
 [ 78%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.event.o
 [ 79%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.locals.o
 [ 81%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.key.o
-[ 82%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.mouse.o
 /__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.key.c: In function '__pyx_pf_5renpy_6pygame_3key_13KeyboardState_4__init__':
 /__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.key.c:2871:17: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
  2871 |   __pyx_v_state = SDL_GetKeyboardState((&__pyx_v_self->numkeys));
       |                 ^
+[ 82%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.mouse.o
 [ 83%] Building C object CMakeFiles/renpy-switch.dir/__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.joystick.o
 /__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.joystick.c: In function '__pyx_pf_5renpy_6pygame_8joystick_8Joystick_12get_name':
 /__w/RenpySwitch/RenpySwitch/renpy-source/tmp/gen3-static/renpy.pygame.joystick.c:3756:14: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
@@ -340,13 +340,7 @@ Downloading ecdsa-0.19.2-py2.py3-none-any.whl (150 kB)
 Installing collected packages: six, ecdsa
 
 Successfully installed ecdsa-0.19.2 six-1.17.0
-WARNING: The directory '/github/home/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled. Check the permissions and owner of that directory. If executing pip with sudo, you should use sudo's -H flag.
-Downloading cpython-3.14.8-linux-x86_64-gnu (download) (34.6MiB)
- Downloaded cpython-3.14.8-linux-x86_64-gnu (download)
-Installed Python 3.14.8 in 712ms
- + cpython-3.14.8-linux-x86_64-gnu (python3.14)
-warning: `/github/home/.local/bin` is not on your PATH. To use installed Python executables, run `export PATH="/github/home/.local/bin:$PATH"` or `uv python update-shell`.
->>> Precompiling bytecode with /github/home/.local/share/uv/python/cpython-3.14-linux-x86_64-gnu/bin/python3.14 (magic 3627)
+>>> Precompiling bytecode with /tmp/NXPython/build/cpython/build/nx-portlibs/build-python/python (magic 3627)
 >>> Packaging...
 Visiting directories...
 Calculating metadata...
@@ -2189,11 +2183,11 @@ Writing raw/romfs/python/site/ecdsa/ssh.py to RomFS image...
 Writing raw/romfs/python/site/ecdsa/util.py to RomFS image...
 Writing raw/romfs/python/site/six.py to RomFS image...
 >>> Done. Output in ./raw:
-total 208104
-drwxr-xr-x  4 root root      4096 Oct 20 07:17 .
-drwxr-xr-x 13 1001 1001      4096 Oct 20 07:16 ..
--rw-r--r--  1 root root     16384 Oct 20 07:17 control.nacp
-drwxr-xr-x  2 root root      4096 Oct 20 07:17 exefs
--rwxr-xr-x  1 root root 139694760 Oct 20 07:17 renpy-switch.elf
--rw-r--r--  1 root root  73853069 Oct 20 07:17 renpy-switch.nro
-drwxr-xr-x  4 root root      4096 Oct 20 07:16 romfs
+total 208100
+drwxr-xr-x  4 root root      4096 Oct 20 07:35 .
+drwxr-xr-x 13 1001 1001      4096 Oct 20 07:34 ..
+-rw-r--r--  1 root root     16384 Oct 20 07:35 control.nacp
+drwxr-xr-x  2 root root      4096 Oct 20 07:35 exefs
+-rwxr-xr-x  1 root root 139693056 Oct 20 07:35 renpy-switch.elf
+-rw-r--r--  1 root root  73853741 Oct 20 07:35 renpy-switch.nro
+drwxr-xr-x  4 root root      4096 Oct 20 07:34 romfs
