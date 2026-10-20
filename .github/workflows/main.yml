@@ -81,8 +81,8 @@ jobs:
             raw/exefs/main
             raw/romfs
 
-      # Logs on GitHub's storage are not always reachable for debugging, so on
-      # failure the logs are also pushed to the "ci-logs" branch and the first
+      # Logs on GitHub's storage are not always reachable for debugging, so the
+      # logs are also pushed to the "ci-logs" branch, and on failure the first
       # errors are shown as annotations.
       - name: Report errors
         if: failure()
@@ -93,7 +93,7 @@ jobs:
             done || true
 
       - name: Publish logs to the ci-logs branch
-        if: failure()
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -101,7 +101,11 @@ jobs:
           mkdir -p /tmp/cilog
           cp setup.log build.log /tmp/cilog/ 2>/dev/null || true
           [ -d build-switch/cmake/CMakeFiles ] && cp build-switch/cmake/CMakeFiles/CMake*.log /tmp/cilog/ 2>/dev/null || true
-          echo "${GITHUB_RUN_ID} ${GITHUB_SHA}" > /tmp/cilog/RUN.txt
+          echo "${GITHUB_RUN_ID} ${GITHUB_SHA} ${{ job.status }}" > /tmp/cilog/RUN.txt
+          if [ -d raw ]; then
+            (cd raw && ls -la && du -sh romfs romfs/* romfs/*/* 2>/dev/null) > /tmp/cilog/raw-summary.txt
+            (cd raw/romfs && find . -type f | sort) > /tmp/cilog/romfs-files.txt
+          fi
           cd /tmp/cilog
           git init -q -b ci-logs
           git add -A
