@@ -712,6 +712,7 @@
 ./Contents/renpy/versions.py
 ./Contents/renpy/warp.py
 ./Contents/renpy/webloader.py
+./nsp/main.npdm
 ./python/lib/python3.14/abc.py
 ./python/lib/python3.14/_aix_support.py
 ./python/lib/python3.14/_android_support.py

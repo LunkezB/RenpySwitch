@@ -1,9 +1,9 @@
-total 208340
-drwxr-xr-x  4 root root      4096 Oct 20 07:52 .
-drwxr-xr-x 13 1001 1001      4096 Oct 20 07:52 ..
--rw-r--r--  1 root root     16384 Oct 20 07:52 control.nacp
-drwxr-xr-x  2 root root      4096 Oct 20 07:52 exefs
--rwxr-xr-x  1 root root 139693480 Oct 20 07:52 renpy-switch.elf
--rw-r--r--  1 root root  74097625 Oct 20 07:52 renpy-switch.nro
-drwxr-xr-x  4 root root      4096 Oct 20 07:52 romfs
+total 208348
+drwxr-xr-x  4 root root      4096 Oct 20 08:55 .
+drwxr-xr-x 15 1001 1001      4096 Oct 20 08:55 ..
+-rw-r--r--  1 root root     16384 Oct 20 08:55 control.nacp
+drwxr-xr-x  2 root root      4096 Oct 20 08:55 exefs
+-rwxr-xr-x  1 root root 139694624 Oct 20 08:55 renpy-switch.elf
+-rw-r--r--  1 root root  74097977 Oct 20 08:55 renpy-switch.nro
+drwxr-xr-x  5 root root      4096 Oct 20 08:55 romfs
 38M	romfs
