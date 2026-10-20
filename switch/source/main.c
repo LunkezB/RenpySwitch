@@ -24,7 +24,11 @@
 #include <switch.h>
 #include <Python.h>
 
+#include <arpa/inet.h>
 #include <errno.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,8 +40,25 @@
 #define RENPY_SWITCH_STACK_SIZE (32 * 1024 * 1024)
 #endif
 
-/* CPython (and Ren'Py's pickling) need a large main-thread stack. */
-__attribute__((used)) size_t __stacksize__ = RENPY_SWITCH_STACK_SIZE;
+/*
+ * Early boot log, written before anything else can go wrong, so a crash
+ * leaves a trace even when the save folder was never created.
+ */
+#define BOOT_LOG "sdmc:/switch/renpy-switch-boot.txt"
+
+static void boot_log(const char *fmt, ...)
+{
+    FILE *f = fopen(BOOT_LOG, "a");
+    if (!f) {
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
+}
 
 static char g_game_dir[FS_MAX_PATH];
 static char g_save_dir[FS_MAX_PATH];
@@ -214,39 +235,34 @@ static struct _inittab g_builtins[] = {
 /* ------------------------------------------------------------------------ */
 /* libnx hooks                                                              */
 
-/* Use (almost) all memory available to the process for the heap. */
-void __libnx_initheap(void)
-{
-    void *addr = NULL;
-    u64 size = 0;
-    u64 mem_available = 0, mem_used = 0;
+/*
+ * No __libnx_initheap override: libnx's default uses all available memory in
+ * an installed title and the heap prepared by the homebrew loader for an
+ * .nro. (Calling svcSetHeapSize under hbloader crashes before main.)
+ */
 
-    svcGetInfo(&mem_available, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
-    svcGetInfo(&mem_used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
-
-    if (mem_available > mem_used + 0x200000) {
-        size = (mem_available - mem_used - 0x200000) & ~0x1FFFFF;
-    }
-    if (size == 0) {
-        size = 0x2000000 * 16;
-    }
-
-    Result rc = svcSetHeapSize(&addr, size);
-    if (R_FAILED(rc) || addr == NULL) {
-        diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_HeapAllocFailed));
-    }
-
-    extern char *fake_heap_start;
-    extern char *fake_heap_end;
-
-    fake_heap_start = (char *)addr;
-    fake_heap_end = (char *)addr + size;
-}
+static int g_nxlink = 0;
 
 void userAppInit(void)
 {
-    romfsInit();
-    socketInitializeDefault();
+    FILE *f = fopen(BOOT_LOG, "w");
+    if (f) {
+        fputs("renpy-switch boot log\n", f);
+        fclose(f);
+    }
+
+    Result rc = romfsInit();
+    boot_log("romfsInit: 0x%x", rc);
+
+    rc = socketInitializeDefault();
+    boot_log("socketInitializeDefault: 0x%x", rc);
+
+    /* Started with nxlink (hbmenu netloader)? Then stdout/stderr go back to
+     * the PC: "nxlink -s game.nro" shows Ren'Py's output live. */
+    if (R_SUCCEEDED(rc) && __nxlink_host.s_addr != 0 && nxlinkStdio() >= 0) {
+        g_nxlink = 1;
+        boot_log("nxlink stdio enabled");
+    }
 }
 
 void userAppExit(void)
@@ -293,20 +309,13 @@ static void append_path(PyConfig *config, const char *path)
     PyMem_RawFree(wide);
 }
 
-int main(int argc, char *argv[])
+static int g_argc;
+static char **g_argv;
+static int g_python_rv = 1;
+
+static void *python_thread(void *arg)
 {
-    setenv("MESA_NO_ERROR", "1", 1);
-
-    appletLockExit();
-    appletHook(&g_applet_hook_cookie, on_applet_hook, NULL);
-
-    if (!is_dir("romfs:/Contents/renpy") || !is_dir("romfs:/python/lib/python3.14")) {
-        fatal("Ren'Py runtime not found in RomFS.\n\n"
-              "This .nro/.nsp was not packaged correctly: romfs:/Contents/renpy and "
-              "romfs:/python/lib/python3.14 must exist.");
-    }
-
-    choose_paths(argc, argv);
+    (void)arg;
 
     if (PyImport_ExtendInittab(g_builtins) < 0) {
         fatal("Could not register Ren'Py's built-in modules.");
@@ -334,19 +343,25 @@ int main(int argc, char *argv[])
     append_path(&config, "romfs:/python/lib/python3.14");
     append_path(&config, "romfs:/python/site");
 
+    boot_log("Py_InitializeFromConfig...");
     PyStatus status = Py_InitializeFromConfig(&config);
     PyConfig_Clear(&config);
     check_status(status, "Py_InitializeFromConfig");
+    boot_log("Python initialized");
 
-    /* stdout/stderr go to a log on the SD card instead of the (absent) console. */
+    /* stdout/stderr: to nxlink when connected, otherwise to a log file. */
+    if (!g_nxlink) {
+        PyRun_SimpleString(
+            "import os, sys\n"
+            "try:\n"
+            "    _d = os.environ['RENPY_SWITCH_SAVE'] + 'logs'\n"
+            "    os.makedirs(_d, exist_ok=True)\n"
+            "    sys.stdout = sys.stderr = open(_d + '/stdout.txt', 'w', buffering=1, encoding='utf-8', errors='replace')\n"
+            "except Exception:\n"
+            "    pass\n");
+    }
+
     PyRun_SimpleString(
-        "import os, sys\n"
-        "try:\n"
-        "    _d = os.environ['RENPY_SWITCH_SAVE'] + 'logs'\n"
-        "    os.makedirs(_d, exist_ok=True)\n"
-        "    sys.stdout = sys.stderr = open(_d + '/stdout.txt', 'w', buffering=1, encoding='utf-8', errors='replace')\n"
-        "except Exception:\n"
-        "    pass\n"
         "import threading\n"
         "try:\n"
         "    threading.stack_size(4 * 1024 * 1024)\n"
@@ -358,8 +373,11 @@ int main(int argc, char *argv[])
         fatal("Could not open romfs:/Contents/renpy.py.");
     }
 
-    /* PyRun_SimpleFileEx closes the file. SystemExit ends the process here. */
+    boot_log("running renpy.py");
+
+    /* PyRun_SimpleFileEx closes the file. */
     int rv = PyRun_SimpleFileEx(renpy_file, "romfs:/Contents/renpy.py", 1);
+    boot_log("renpy.py returned %d", rv);
 
     if (rv != 0) {
         snprintf(g_message, sizeof(g_message),
@@ -370,5 +388,49 @@ int main(int argc, char *argv[])
     }
 
     Py_FinalizeEx();
-    return rv == 0 ? 0 : 1;
+    g_python_rv = rv == 0 ? 0 : 1;
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    boot_log("main: argc=%d argv0=%s nso=%d", argc, argc > 0 && argv[0] ? argv[0] : "(none)", (int)envIsNso());
+
+    setenv("MESA_NO_ERROR", "1", 1);
+
+    appletLockExit();
+    appletHook(&g_applet_hook_cookie, on_applet_hook, NULL);
+
+    if (!is_dir("romfs:/Contents/renpy") || !is_dir("romfs:/python/lib/python3.14")) {
+        boot_log("RomFS incomplete");
+        fatal("Ren'Py runtime not found in RomFS.\n\n"
+              "This .nro/.nsp was not packaged correctly: romfs:/Contents/renpy and "
+              "romfs:/python/lib/python3.14 must exist.");
+    }
+
+    g_argc = argc;
+    g_argv = argv;
+    choose_paths(argc, argv);
+    boot_log("game: %s", g_game_dir);
+    boot_log("save: %s", g_save_dir);
+
+    /* Run the interpreter on a thread with a big stack: the main thread's
+     * stack depends on how the program was started. */
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, RENPY_SWITCH_STACK_SIZE);
+
+    pthread_t thread;
+    int err = pthread_create(&thread, &attr, python_thread, NULL);
+    pthread_attr_destroy(&attr);
+
+    if (err != 0) {
+        boot_log("pthread_create failed: %d", err);
+        python_thread(NULL);
+    } else {
+        pthread_join(thread, NULL);
+    }
+
+    boot_log("exit %d", g_python_rv);
+    return g_python_rv;
 }

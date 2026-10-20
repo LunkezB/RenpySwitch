@@ -120,7 +120,6 @@ target_compile_definitions(renpy-switch PRIVATE
 
 target_link_options(renpy-switch PRIVATE
     -Wl,-z,notext
-    -Wl,-u,__stacksize__
     -Wl,--gc-sections
 )
 
