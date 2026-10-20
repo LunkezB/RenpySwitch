@@ -319,7 +319,7 @@ int main(int argc, char *argv[])
     config.install_signal_handlers = 0;
     config.write_bytecode = 0;
     config.buffered_stdio = 0;
-    config.optimization_level = 2;
+    config.optimization_level = 0;  /* matches the precompiled .pyc */
     config.use_hash_seed = 1;
     config.hash_seed = 0;
 

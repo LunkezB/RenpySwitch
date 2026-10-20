@@ -98,23 +98,34 @@ find raw/romfs/python -name '__pycache__' -prune -exec rm -rf {} +
 
 # Pure-Python packages Ren'Py imports at startup (savetoken -> ecdsa, six).
 pip install --no-deps --no-compile --target raw/romfs/python/site "six==1.17.0" "ecdsa==0.19.2"
-rm -rf raw/romfs/python/site/*.dist-info raw/romfs/python/site/bin
+rm -rf raw/romfs/python/site/*.dist-info raw/romfs/python/site/bin raw/romfs/python/site/ecdsa/test_*.py
 # Stand-ins for CPython modules NXPython does not build (see switch/site).
 cp switch/site/*.py raw/romfs/python/site/
 
-# Precompile to bytecode with a host CPython 3.14 when one is available
-# (NXPython builds one when the host lacks it). Saves a lot of startup time.
+# Precompile to bytecode with a host CPython 3.14 whose bytecode magic matches
+# NXPython's. Hash-based "unchecked" pycs in __pycache__: RomFS has no
+# timestamps, so mtime-based pycs would always look stale.
 HOST_PY314="$(command -v python3.14 || true)"
 if [ -z "$HOST_PY314" ]; then
     HOST_PY314="$(find /tmp/NXPython -type f -name python -path '*build-python*' -perm -u+x 2>/dev/null | head -1 || true)"
 fi
-if [ -n "$HOST_PY314" ] && "$HOST_PY314" -c 'import sys; assert sys.version_info[:2] == (3, 14)' 2>/dev/null; then
-    echo ">>> Precompiling .pyc with $HOST_PY314"
-    # -b: legacy foo.pyc next to foo.py (what the RomFS importer finds first).
-    "$HOST_PY314" -OO -m compileall -b -q -j 0 raw/romfs/Contents/renpy raw/romfs/Contents/renpy.py \
-        raw/romfs/python/lib/python3.14 raw/romfs/python/site || true
+if [ -z "$HOST_PY314" ] || ! "$HOST_PY314" -c 'import sys; assert sys.version_info[:2] == (3, 14)' 2>/dev/null; then
+    pip install -q uv && uv python install 3.14 && HOST_PY314="$(uv python find 3.14)" || HOST_PY314=""
+fi
+
+TARGET_MAGIC="$(sed -n 's/^#define PYC_MAGIC_NUMBER \([0-9][0-9]*\).*/\1/p' "$PORTLIBS/include/python3.14/internal/pycore_magic_number.h" 2>/dev/null || true)"
+HOST_MAGIC=""
+if [ -n "$HOST_PY314" ]; then
+    HOST_MAGIC="$("$HOST_PY314" -c 'import importlib.util as u; print(int.from_bytes(u.MAGIC_NUMBER[:2], "little"))' 2>/dev/null || true)"
+fi
+
+if [ -n "$TARGET_MAGIC" ] && [ "$TARGET_MAGIC" = "$HOST_MAGIC" ]; then
+    echo ">>> Precompiling bytecode with $HOST_PY314 (magic $HOST_MAGIC)"
+    "$HOST_PY314" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
+        raw/romfs/Contents/renpy raw/romfs/python/lib/python3.14 raw/romfs/python/site
 else
-    echo ">>> WARNING: no host CPython 3.14 found; .py will be compiled on the console at every start."
+    echo ">>> WARNING: no host CPython with bytecode magic '$TARGET_MAGIC' (got '$HOST_MAGIC' from '$HOST_PY314');"
+    echo ">>>          .py files will be compiled on the console at every start."
 fi
 
 # ─── 5. NRO / NSO ────────────────────────────────────────────────────────────
