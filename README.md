@@ -25,6 +25,12 @@ and icosane.
      It extracts the game, removes the Android `x-` prefixes, adds the
      presplash and the Switch controls, checks image/video formats and gives
      the `.nro` its own title and icon (icon needs `pip install pillow`).
+
+     Add `--pack` to put images, audio and video into a few `.rpa` archives
+     (Ren'Py's own format; scripts stay loose). Thousands of small files are
+     very slow to copy over USB/MTP; a handful of archives is not. An already
+     converted folder can be packed in place:
+     `python tools/apk2switch.py path/to/game --pack`.
 3. **Copy to the SD card**:
 
    ```

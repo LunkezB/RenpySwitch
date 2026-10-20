@@ -21,7 +21,11 @@ Result (copy the "switch" folder to the root of the SD card):
 
 Usage
   python apk2switch.py game.apk
-  python apk2switch.py game.apk --nro renpy-switch.nro --name subahibi --title "Subarashiki Hibi"
+  python apk2switch.py game.apk --nro renpy-switch.nro --name subahibi --title "Subarashiki Hibi" --pack
+  python apk2switch.py path/to/switch/subahibi/game --pack      (pack an already converted folder)
+
+--pack puts images, audio and video into a few .rpa archives (Ren'Py's own
+archive format), so copying to the SD card is fast; scripts stay loose.
 
 Only plain Python 3.8+ is required; Pillow is optional (icon, AVIF).
 """
@@ -29,10 +33,12 @@ Only plain Python 3.8+ is required; Pillow is optional (icon, AVIF).
 import argparse
 import io
 import os
+import pickle
 import shutil
 import struct
 import sys
 import zipfile
+import zlib
 from collections import Counter
 
 CONTROLS_RPY = r'''@@CONTROLS_RPY@@'''
@@ -192,6 +198,126 @@ def convert_avif(out_game, names):
 
 
 # ---------------------------------------------------------------------------
+# Packing into Ren'Py archives (.rpa)
+
+# Kept as loose files: scripts (so Ren'Py can write .rpyc next to .rpy),
+# Python code, existing archives, and files Ren'Py opens by path.
+LOOSE_EXTS = {".rpy", ".rpyc", ".rpym", ".rpymc", ".py", ".pyc", ".pyo", ".rpa", ".rpi", ".rpyb"}
+LOOSE_TOP_DIRS = {"cache", "saves", "python-packages"}
+LOOSE_TOP_PREFIXES = ("presplash", "android-presplash", "icon", "script_version")
+
+RPA_KEY = 0x42424242
+RPA_PAD = b"Made with Ren'Py."
+
+
+def keep_loose(rel):
+    parts = rel.split("/")
+    if parts[0] in LOOSE_TOP_DIRS:
+        return True
+    if len(parts) == 1 and parts[0].lower().startswith(LOOSE_TOP_PREFIXES):
+        return True
+    return os.path.splitext(rel)[1].lower() in LOOSE_EXTS
+
+
+def write_rpa(path, files, game_dir):
+    """
+    Writes an RPA-3.0 archive (the format of Ren'Py's own archiver),
+    streaming the data so large videos are never loaded into memory.
+    `files` are paths relative to game_dir, with forward slashes.
+    """
+    index = {}
+    with open(path, "wb") as f:
+        f.write(b"RPA-3.0 XXXXXXXXXXXXXXXX XXXXXXXX\n")
+        for rel in files:
+            f.write(RPA_PAD)
+            offset = f.tell()
+            with open(os.path.join(game_dir, *rel.split("/")), "rb") as src:
+                shutil.copyfileobj(src, f, 4 * 1024 * 1024)
+            dlen = f.tell() - offset
+            index[rel] = [(offset ^ RPA_KEY, dlen ^ RPA_KEY, b"")]
+        index_offset = f.tell()
+        f.write(zlib.compress(pickle.dumps(index, 2)))
+        f.seek(0)
+        f.write(b"RPA-3.0 %016x %08x\n" % (index_offset, RPA_KEY))
+
+
+def read_rpa_index(path):
+    with open(path, "rb") as f:
+        head = f.read(40)
+        offset = int(head[8:24], 16)
+        key = int(head[25:33], 16)
+        f.seek(offset)
+        index = pickle.loads(zlib.decompress(f.read()))
+    return {k: [(o ^ key, l ^ key) for (o, l, *_rest) in v] for k, v in index.items()}
+
+
+def pack_game(game_dir, max_bytes, prefix="switch"):
+    """Packs everything except LOOSE files into prefix00.rpa, prefix01.rpa..."""
+
+    todo = []
+    for root, dirs, files in os.walk(game_dir):
+        for fn in files:
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, game_dir).replace(os.sep, "/")
+            if not keep_loose(rel):
+                todo.append((rel, os.path.getsize(full)))
+
+    if not todo:
+        say("Nothing to pack.")
+        return
+
+    todo.sort()
+
+    # Split into archives of at most max_bytes (a single bigger file gets an
+    # archive of its own; FAT32 allows up to 4 GB per file).
+    groups, cur, cur_size = [], [], 0
+    for rel, size in todo:
+        if cur and cur_size + size > max_bytes:
+            groups.append(cur)
+            cur, cur_size = [], 0
+        cur.append(rel)
+        cur_size += size + len(RPA_PAD)
+    if cur:
+        groups.append(cur)
+
+    existing = [f for f in os.listdir(game_dir) if f.startswith(prefix) and f.endswith(".rpa")]
+    if existing:
+        raise SystemExit("ERROR: {} already contains {}*.rpa; remove them first.".format(game_dir, prefix))
+
+    total = sum(size for _, size in todo)
+    say("")
+    say("Packing {} files ({}) into {} archive(s) ...".format(len(todo), human(total), len(groups)))
+
+    for i, group in enumerate(groups):
+        name = "{}{:02d}.rpa".format(prefix, i)
+        path = os.path.join(game_dir, name)
+        write_rpa(path, group, game_dir)
+
+        # Verify the archive before deleting the loose files.
+        index = read_rpa_index(path)
+        if sorted(index) != sorted(group):
+            raise SystemExit("ERROR: {} index does not match its contents.".format(name))
+        with open(path, "rb") as f:
+            for rel in group:
+                off, ln = index[rel][0]
+                if ln != os.path.getsize(os.path.join(game_dir, *rel.split("/"))):
+                    raise SystemExit("ERROR: size mismatch for {} in {}.".format(rel, name))
+            f.seek(0, 2)
+
+        for rel in group:
+            os.remove(os.path.join(game_dir, *rel.split("/")))
+        say("  {}  {} files, {}".format(name, len(group), human(os.path.getsize(path))))
+
+    # Remove directories that are now empty.
+    for root, dirs, files in os.walk(game_dir, topdown=False):
+        if root != game_dir and not os.listdir(root):
+            os.rmdir(root)
+
+    loose = sum(len(files) for _, _, files in os.walk(game_dir))
+    say("Game folder now has {} files (archives + scripts).".format(loose))
+
+
+# ---------------------------------------------------------------------------
 # NRO metadata (title / author / icon)
 
 NACP_SIZE = 0x4000
@@ -315,7 +441,7 @@ def rewrite_nro(src, dst, title, author, version, icon_jpeg):
 
 def main():
     ap = argparse.ArgumentParser(description="Convert a Ren'Py Android APK for the Switch homebrew build.")
-    ap.add_argument("apk", help="the Ren'Py .apk")
+    ap.add_argument("apk", help="the Ren'Py .apk, or an already converted \"game\" folder (with --pack)")
     ap.add_argument("-o", "--out", default=None, help="output folder (default: <apk name>-switch)")
     ap.add_argument("--name", default=None, help="folder name on the SD card, e.g. subahibi")
     ap.add_argument("--nro", default=None, help="renpy-switch.nro from the CI build, to copy and rename")
@@ -326,7 +452,23 @@ def main():
     ap.add_argument("--no-controls", action="store_true", help="do not add zz_switch_controls.rpy")
     ap.add_argument("--convert-avif", action="store_true", help="convert AVIF images (needs Pillow >= 11.2)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing game folder")
+    ap.add_argument("--pack", action="store_true",
+                    help="pack images/audio/video into a few .rpa archives (fast to copy)")
+    ap.add_argument("--pack-size", type=int, default=1900,
+                    help="maximum size of one archive in MB (default 1900; FAT32 limit is 4096)")
     args = ap.parse_args()
+
+    # Pack an existing game folder in place.
+    if os.path.isdir(args.apk):
+        game_dir = os.path.abspath(args.apk)
+        if os.path.isdir(os.path.join(game_dir, "game")):
+            game_dir = os.path.join(game_dir, "game")
+        if not args.pack:
+            raise SystemExit("ERROR: {} is a folder; add --pack to pack it.".format(game_dir))
+        pack_game(game_dir, args.pack_size * 1024 * 1024)
+        say("")
+        say("Done. Copy {} to the SD card (replace the old game folder).".format(game_dir))
+        return
 
     apk_path = os.path.abspath(args.apk)
     base = os.path.splitext(os.path.basename(apk_path))[0]
@@ -375,6 +517,9 @@ def main():
 
     if args.convert_avif and any(n.lower().endswith(".avif") for n in names):
         convert_avif(out_game, names)
+
+    if args.pack:
+        pack_game(out_game, args.pack_size * 1024 * 1024)
 
     if args.nro:
         icon_jpeg = None
