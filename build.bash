@@ -1,184 +1,130 @@
 #!/usr/bin/env bash
+# Builds Ren'Py 8.5.3 for the Nintendo Switch. Run setup.bash first.
+#
+# Output (./raw):
+#   raw/renpy-switch.nro     generic launcher: put it in sdmc:/switch/<name>/
+#                            together with the game's "game" folder
+#   raw/renpy-switch.elf     ELF, for re-packing with a custom title/icon
+#   raw/exefs/main           NSO, for ExeFS / installable builds
+#   raw/romfs/               runtime RomFS (Ren'Py + CPython stdlib)
 set -euo pipefail
 
-export DEVKITPRO=/opt/devkitpro
-export RENPY_VER=8.4.1
+export DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
+export PATH="$DEVKITPRO/tools/bin:$DEVKITPRO/devkitA64/bin:$PATH"
+export RENPY_VER=8.5.3
 
-CLEAN=false
+APP_NAME="${APP_NAME:-Ren'Py}"
+APP_AUTHOR="${APP_AUTHOR:-Ren'Py Switch}"
+APP_VERSION="${APP_VERSION:-$RENPY_VER}"
+APP_ICON="${APP_ICON:-}"
 
-usage() {
-    echo "Usage: $0 [--clean]"
-    echo "  --clean   remove generated build caches before rebuilding"
-}
-
-for arg in "$@"; do
-    case "$arg" in
-        --clean)
-            CLEAN=true
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            usage >&2
-            echo "ERROR: unknown argument: $arg" >&2
-            exit 1
-            ;;
-    esac
-done
-
-# ─── Activate venv created by setup.bash ─────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 cd "$SCRIPT_DIR"
 
-if [ ! -f "$VENV_DIR/bin/activate" ]; then
-    echo "ERROR: Venv not found at $VENV_DIR"
-    echo "       Please run setup.bash first."
-    exit 1
-fi
+CLEAN=false
+for arg in "$@"; do
+    case "$arg" in
+        --clean) CLEAN=true ;;
+        -h|--help) echo "Usage: $0 [--clean]"; exit 0 ;;
+        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+done
 
-if [ ! -d renpy_sdk ]; then
-    echo "ERROR: renpy_sdk not found."
-    echo "       Please run setup.bash first to extract the Ren'Py SDK."
-    exit 1
-fi
+for d in renpy-source renpy_sdk; do
+    [ -d "$d" ] || { echo "ERROR: $d not found. Run setup.bash first." >&2; exit 1; }
+done
+[ -f "$VENV_DIR/bin/activate" ] || { echo "ERROR: venv missing. Run setup.bash first." >&2; exit 1; }
 
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
-export PATH="$VENV_DIR/bin:$PATH"
-export RENPY_CYTHON="$(which cython 2>/dev/null || echo "$VENV_DIR/bin/cython")"
+export RENPY_CYTHON="$VENV_DIR/bin/cython"
 
-echo ">>> Building C extensions using Cython: $RENPY_CYTHON"
-
-echo ">>> Using Python: $(which python) — $(python --version)"
-echo ">>> Using Pip:    $(which pip)"
+PORTLIBS="$DEVKITPRO/portlibs/switch"
+PY_RUNTIME="$PORTLIBS/share/python-switch/romfs/python"
+[ -d "$PY_RUNTIME/lib/python3.14" ] || { echo "ERROR: NXPython runtime not found at $PY_RUNTIME" >&2; exit 1; }
 
 if [ "$CLEAN" = true ]; then
-    echo ">>> --clean specified. Removing generated build caches."
-    rm -rf build-switch switch/build
-    rm -rf pygame_sdl2-source/build pygame_sdl2-source/gen pygame_sdl2-source/gen-static pygame_sdl2-source/gen3 pygame_sdl2-source/gen3-static
-    rm -rf renpy-source/module/build renpy-source/module/gen renpy-source/module/gen-static renpy-source/module/gen3 renpy-source/module/gen3-static
+    rm -rf build-switch raw renpy-source/tmp
 fi
 
-# ─── Build pygame_sdl2 C extensions ──────────────────────────────────────────
-pushd pygame_sdl2-source
-mkdir -p gen3 gen3-static
-python setup.py build || true
-PYGAME_SDL2_STATIC=1 python setup.py build || true
-popd
-
-# ─── Build Ren'Py C extensions ───────────────────────────────────────────────
-pushd renpy-source/module
-mkdir -p gen3 gen3-static
-RENPY_DEPS_INSTALL=/usr/lib/x86_64-linux-gnu:/usr:/usr/local python setup.py build || true
-RENPY_DEPS_INSTALL=/usr/lib/x86_64-linux-gnu:/usr:/usr/local RENPY_STATIC=1 python setup.py build || true
-popd
-
-# ─── Install pygame_sdl2 into the venv ───────────────────────────────────────
-pushd pygame_sdl2-source
-python setup.py build
-python setup.py install_headers
-python setup.py install
-popd
-
-# ─── Install Ren'Py module into the venv ─────────────────────────────────────
-pushd renpy-source/module
-RENPY_DEPS_INSTALL=/usr/lib/x86_64-linux-gnu:/usr:/usr/local python setup.py build
-RENPY_DEPS_INSTALL=/usr/lib/x86_64-linux-gnu:/usr:/usr/local python setup.py install
-popd
-
-# ─── Link generated C sources for CMake build ────────────────────────────────
-bash link_sources.bash
-
-export PREFIXARCHIVE=$(realpath renpy-switch-modules.tar.gz)
-
+# ─── 1. Cython → C, module list, inittab ─────────────────────────────────────
+echo ">>> Generating Cython sources..."
 mkdir -p build-switch
-pushd build-switch
-mkdir -p local_prefix
-export LOCAL_PREFIX=$(realpath local_prefix)
-cmake -DCMAKE_BUILD_TYPE=Release ..
-cmake --build .
-mkdir -p $LOCAL_PREFIX/lib
-cp librenpy-switch-modules.a $LOCAL_PREFIX/lib/librenpy-switch-modules.a
-popd
+python scripts/switch_modules.py renpy-source build-switch/gen
 
-tar -czvf $PREFIXARCHIVE -C $LOCAL_PREFIX .
-tar -xf renpy-switch-modules.tar.gz -C $DEVKITPRO/portlibs/switch
-rm renpy-switch-modules.tar.gz
+# ─── 2. Cross-compile the executable ─────────────────────────────────────────
+echo ">>> Compiling for the Switch..."
+cmake -S switch -B build-switch/cmake \
+    -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Switch.cmake" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DRENPY_GEN_OUT="$SCRIPT_DIR/build-switch/gen"
+cmake --build build-switch/cmake -j "$(nproc)"
 
-source /opt/devkitpro/switchvars.sh
+ELF="build-switch/cmake/renpy-switch"
+[ -f "$ELF" ] || ELF="build-switch/cmake/renpy-switch.elf"
 
-# ─── Cross-compile Switch executable ─────────────────────────────────────────
-if [ ! -f switch/CMakeLists.txt ]; then
-    echo "ERROR: switch/CMakeLists.txt is missing."
-    echo "       The Switch executable sources are required to build raw/switch/exefs/main."
-    exit 1
+# ─── 3. Precompile renpy/common with the official SDK (host) ─────────────────
+echo ">>> Compiling renpy/common .rpy -> .rpyc..."
+rm -rf build-switch/compile
+mkdir -p build-switch/compile/game
+cp renpy_sdk/renpy.sh build-switch/compile/
+cp -r renpy_sdk/lib build-switch/compile/lib
+cp -r renpy-source/renpy build-switch/compile/renpy
+cp renpy-source/renpy.py build-switch/compile/renpy.py
+cp script.rpy build-switch/compile/game/script.rpy
+(cd build-switch/compile && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./renpy.sh . compile)
+
+# ─── 4. Stage the RomFS ──────────────────────────────────────────────────────
+echo ">>> Staging RomFS..."
+rm -rf raw
+mkdir -p raw/romfs/Contents raw/exefs
+
+# Ren'Py package (pure Python + renpy/common), without build-only files.
+cp -r build-switch/compile/renpy raw/romfs/Contents/renpy
+cp renpy-source/renpy.py raw/romfs/Contents/renpy.py
+find raw/romfs/Contents/renpy \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' \
+    -o -name '*.c' -o -name '*.h' -o -name '*.rpym' -o -name '__pycache__' \) -prune -exec rm -rf {} +
+rm -rf raw/romfs/Contents/renpy/common/_layout
+
+# CPython standard library from NXPython (without static libs / tests).
+mkdir -p raw/romfs/python
+cp -r "$PY_RUNTIME/lib" raw/romfs/python/lib
+rm -rf raw/romfs/python/lib/python3.14/config-3.14* \
+       raw/romfs/python/lib/python3.14/site-packages \
+       raw/romfs/python/lib/python3.14/lib2to3 \
+       raw/romfs/python/lib/python3.14/pydoc_data
+find raw/romfs/python -name '__pycache__' -prune -exec rm -rf {} +
+
+# Pure-Python packages Ren'Py imports at startup (savetoken -> ecdsa, six).
+pip install --no-deps --no-compile --target raw/romfs/python/site "six==1.17.0" "ecdsa==0.19.2"
+rm -rf raw/romfs/python/site/*.dist-info raw/romfs/python/site/bin
+# Stand-ins for CPython modules NXPython does not build (see switch/site).
+cp switch/site/*.py raw/romfs/python/site/
+
+# Precompile to bytecode with a host CPython 3.14 when one is available
+# (NXPython builds one when the host lacks it). Saves a lot of startup time.
+HOST_PY314="$(command -v python3.14 || true)"
+if [ -z "$HOST_PY314" ]; then
+    HOST_PY314="$(find /tmp/NXPython -type f -name python -path '*build-python*' -perm -u+x 2>/dev/null | head -1 || true)"
+fi
+if [ -n "$HOST_PY314" ] && "$HOST_PY314" -c 'import sys; assert sys.version_info[:2] == (3, 14)' 2>/dev/null; then
+    echo ">>> Precompiling .pyc with $HOST_PY314"
+    # -b: legacy foo.pyc next to foo.py (what the RomFS importer finds first).
+    "$HOST_PY314" -OO -m compileall -b -q -j 0 raw/romfs/Contents/renpy raw/romfs/Contents/renpy.py \
+        raw/romfs/python/lib/python3.14 raw/romfs/python/site || true
+else
+    echo ">>> WARNING: no host CPython 3.14 found; .py will be compiled on the console at every start."
 fi
 
-pushd switch
-mkdir -p build
-pushd build
-cmake ..
-cmake --build .
-popd
-popd
+# ─── 5. NRO / NSO ────────────────────────────────────────────────────────────
+echo ">>> Packaging..."
+cp "$ELF" raw/renpy-switch.elf
+elf2nso "$ELF" raw/exefs/main
 
-mkdir -p ./raw/switch/exefs
-cp ./switch/build/renpy-switch.nso ./raw/switch/exefs/main
+ICON="${APP_ICON:-$DEVKITPRO/libnx/default_icon.jpg}"
+nacptool --create "$APP_NAME" "$APP_AUTHOR" "$APP_VERSION" raw/control.nacp
+elf2nro "$ELF" raw/renpy-switch.nro --romfsdir=raw/romfs --nacp=raw/control.nacp --icon="$ICON"
 
-# ─── Assemble Ren'Py project tree ────────────────────────────────────────────
-rm -rf renpy_clear
-mkdir renpy_clear
-cp ./renpy_sdk/*/renpy.sh ./renpy_clear/renpy.sh
-cp -r ./renpy_sdk/*/lib ./renpy_clear/lib
-mkdir ./renpy_clear/game
-cp -r ./renpy-source/module ./renpy_clear/module
-cp -r ./renpy-source/renpy ./renpy_clear/renpy
-cp ./renpy-source/renpy.py ./renpy_clear/renpy.py
-cp ./script.rpy ./renpy_clear/game/script.rpy
-cp ./renpy_sdk/*/*.exe ./renpy_clear/ || true
-rm -rf ./renpy_clear/lib/*mac*
-rm -rf ./renpy_clear/renpy/common/_layout
-
-pushd renpy_clear
-./renpy.sh . compile
-find ./renpy/ -regex ".*\.\(pxd\|pyx\|rpym\|pxi\)" -delete
-popd
-
-PYTHON_LIB_DIR="$(find renpy_clear/lib -maxdepth 1 -type d -name 'python3.*' | sort -V | tail -n 1)"
-if [ -z "$PYTHON_LIB_DIR" ]; then
-    echo "ERROR: could not find a Python stdlib directory under renpy_clear/lib."
-    exit 1
-fi
-
-# ─── Generate private archive ────────────────────────────────────────────────
-rm -rf private
-mkdir private
-mkdir private/lib
-cp -r renpy_clear/renpy private/renpy
-cp -r "$PYTHON_LIB_DIR" private/lib/
-cp renpy_clear/renpy.py private/main.py
-rm -rf private/renpy/common
-python generate_private.py
-rm -rf private
-
-# ─── Assemble final Switch romfs layout ──────────────────────────────────────
-rm -rf ./raw/lib ./raw/renpy_clear
-rm -rf ./raw/switch/romfs/Contents/lib.zip
-rm -rf ./raw/switch/romfs/Contents/renpy/common
-rm -f ./raw/switch/romfs/Contents/renpy.py
-mkdir -p ./raw/switch/romfs/Contents/renpy
-mkdir -p ./raw/lib
-cp -r ./renpy_clear/renpy/common ./raw/switch/romfs/Contents/renpy/
-cp ./renpy_clear/renpy.py ./raw/switch/romfs/Contents/
-cp -r "$PYTHON_LIB_DIR"/. ./raw/lib
-cp -r ./renpy_clear/renpy ./raw/lib
-rm -rf ./raw/lib/renpy/common/
-7z a -tzip ./raw/switch/romfs/Contents/lib.zip ./raw/lib/*
-rm -rf ./raw/lib
-rm -rf ./renpy_clear/game
-mv ./renpy_clear/ ./raw/
-
-echo ">>> build.bash complete. Output is in ./raw/"
+echo ">>> Done. Output in ./raw:"
+ls -la raw

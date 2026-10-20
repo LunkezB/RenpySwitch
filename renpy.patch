@@ -1,639 +1,552 @@
-diff -Naur renpy_orig/module/ffmedia.c renpy_mod/module/ffmedia.c
---- renpy_orig/module/ffmedia.c	2024-12-07 23:25:07.185025200 -0300
-+++ renpy_mod/module/ffmedia.c	2026-08-09 20:57:02.949279979 -0300
-@@ -10,9 +10,7 @@
+diff --git a/renpy.py b/renpy.py
+index 2b2afe0..7a95070 100644
+--- a/renpy.py
++++ b/renpy.py
+@@ -30,6 +30,46 @@ import os
+ import sys
+ import warnings
  
- #include <stdlib.h>
++# Nintendo Switch homebrew support. ##########################################
++
++# NXPython reports "nx"; older Python 2 ports reported "horizon".
++switch = sys.platform in ("nx", "horizon")
++
++
++def switch_save_root():
++    """
++    Switch: the writable directory (always ending in "/") where saves, logs,
++    persistent data and regenerated caches live. The launcher (main.c) picks
++    it and passes it in RENPY_SWITCH_SAVE.
++    """
++
++    rv = os.environ.get("RENPY_SWITCH_SAVE", "sdmc:/switch/renpy-saves/default/")
++
++    if not rv.endswith("/"):
++        rv += "/"
++
++    return rv
++
++
++def switch_base():
++    """
++    Switch: the Ren'Py base directory (contains renpy.py and renpy/). Always
++    romfs:/Contents on the console; overridable for desktop simulation.
++    """
++
++    return os.environ.get("RENPY_SWITCH_BASE", "romfs:/Contents")
++
++
++def switch_makedirs(path):
++    try:
++        if not os.path.isdir(path):
++            os.makedirs(path)
++    except Exception:
++        pass
++
++    return path
++
++
+ # Functions to be customized by distributors. ################################
  
--#ifndef _WIN32
--#define USE_POSIX_MEMALIGN
--#endif
+ def path_to_gamedir(basedir, name):
+@@ -43,6 +83,11 @@ def path_to_gamedir(basedir, name):
+         The basename of the executable, with the extension removed.
+     """
+ 
++    if switch:
++        # Either embedded in the NRO/NSP romfs, or a loose "game" folder next
++        # to the .nro on the SD card; main.c decides and passes it here.
++        return os.environ.get("RENPY_SWITCH_GAME", switch_base() + "/game")
++
+     # A list of candidate game directory names.
+     candidates = [ name ]
+ 
+@@ -85,6 +130,9 @@ def path_to_common(renpy_base):
+         The absolute path to the Ren'Py base directory, the directory
+         containing this file.
+     """
++    if switch:
++        return switch_base() + "/renpy/common"
++
+     path = renpy_base + "/renpy/common"
+ 
+     if os.path.isdir(path):
+@@ -122,6 +170,9 @@ def path_to_saves(gamedir, save_directory=None): # type: (str, str|None) -> str
+         except Exception:
+             return False
+ 
++    if switch:
++        return switch_makedirs(switch_save_root() + "saves")
++
+     # Android.
+     if renpy.android:
+         paths = [
+@@ -210,6 +261,9 @@ def path_to_renpy_base():
+     Returns the absolute path to the Ren'Py base directory.
+     """
+ 
++    if switch:
++        return switch_base()
++
+     renpy_base = os.path.dirname(os.path.abspath(__file__))
+     renpy_base = os.path.abspath(renpy_base)
+ 
+@@ -227,6 +281,9 @@ def path_to_logdir(basedir):
+     if renpy.android:
+         return os.environ['ANDROID_PUBLIC']
+ 
++    if switch:
++        return switch_makedirs(switch_save_root() + "logs")
++
+     return basedir
+ 
+ def predefined_searchpath(commondir):
+@@ -235,6 +292,11 @@ def predefined_searchpath(commondir):
+     # The default gamedir, in private.
+     searchpath = [ renpy.config.gamedir ]
+ 
++    if switch:
++        # Writable overlay for caches regenerated on the console (bytecode,
++        # screens, shaders). It comes first so fresh files win.
++        searchpath.insert(0, switch_makedirs(switch_save_root() + "game"))
++
+     if renpy.android:
+         # The public android directory.
+         if "ANDROID_PUBLIC" in os.environ:
+@@ -301,4 +363,20 @@ def main():
+ 
+ 
+ if __name__ == "__main__":
+-    main()
++    if switch:
++        try:
++            main()
++        except SystemExit:
++            raise
++        except BaseException:
++            import traceback
++
++            try:
++                with open(switch_makedirs(switch_save_root() + "logs") + "/exception.txt", "w") as f:
++                    traceback.print_exc(file=f)
++            except Exception:
++                pass
++
++            raise
++    else:
++        main()
+diff --git a/renpy/__init__.py b/renpy/__init__.py
+index 840e101..fbfde05 100644
+--- a/renpy/__init__.py
++++ b/renpy/__init__.py
+@@ -118,6 +118,10 @@ except ImportError:
+ 
+ official = official and getattr(site, "renpy_build_official", False)
+ 
++# Nintendo Switch homebrew build (NXPython reports "nx", older ports "horizon").
++if sys.platform in ("nx", "horizon"):
++    official = False
 +
  
- /* Should a mono channel be split into two equal stero channels (true) or
-  * should the energy be split onto two stereo channels with 1/2 the energy
-@@ -872,15 +870,7 @@
- 	    rv->pitch += ROW_ALIGNMENT - (rv->pitch % ROW_ALIGNMENT);
- 	}
- 
--#ifndef USE_POSIX_MEMALIGN
-     rv->pixels = SDL_calloc(rv->pitch * rv->h, 1);
--#else
--	if (posix_memalign(&rv->pixels, ROW_ALIGNMENT, rv->pitch * rv->h)) {
--		av_free(rv);
--		return NULL;
--	}
--    memset(rv->pixels, 0, rv->pitch * rv->h);
--#endif
- 
- 	rv->format = sample->format;
- 	rv->next = NULL;
-diff -Naur renpy_orig/renpy/__init__.py renpy_mod/renpy/__init__.py
---- renpy_orig/renpy/__init__.py	2024-12-07 23:25:07.186025400 -0300
-+++ renpy_mod/renpy/__init__.py	2026-08-09 20:57:02.950703327 -0300
-@@ -85,7 +85,7 @@
-     version_name = version_dict["version_name"]
-     version = version_dict["version"]
- 
--official = official and getattr(site, "renpy_build_official", False)
-+official = False
- 
- VersionTuple = namedtuple("VersionTuple", ["major", "minor", "patch", "commit"])
- version_tuple = VersionTuple(*(int(i) for i in version.split(".")))
-@@ -119,6 +119,7 @@
- android = False
- ios = False
- emscripten = False
-+switch = False
+ class VersionTuple(NamedTuple):
+     major: int
+@@ -157,13 +161,16 @@ linux: bool = False
+ android: bool = False
+ ios: bool = False
+ emscripten: bool = False
++switch: bool = False
  
  # Should we enable experimental features and debugging?
  experimental = "RENPY_EXPERIMENTAL" in os.environ
-@@ -172,13 +173,15 @@
-     android = True
- elif sys.platform == 'emscripten' or "RENPY_EMSCRIPTEN" in os.environ:
-     emscripten = True
-+elif sys.platform == 'horizon':
-+    switch = True
- else:
-     linux = True
  
- arch = os.environ.get("RENPY_PLATFORM", "unknown-unknown-unknown").rpartition("-")[2]
+ import platform
+ 
+-if platform.win32_ver()[0]:
++if sys.platform in ("nx", "horizon"):
++    switch = True
++elif platform.win32_ver()[0]:
+     windows = True
+ elif os.environ.get("RENPY_PLATFORM", "").startswith("ios"):
+     ios = True
+@@ -179,7 +186,7 @@ else:
+ arch: str = os.environ.get("RENPY_PLATFORM", "unknown-unknown-unknown").rpartition("-")[2]
  
  # A flag that's true if we're on a smartphone or tablet-like platform.
--mobile = android or ios or emscripten
-+mobile = android or ios or emscripten or switch
+-mobile: bool = android or ios or emscripten
++mobile: bool = android or ios or emscripten or switch
  
  # A flag that's set to true if the game directory is bundled inside a mac app.
- macapp = False
-@@ -418,7 +421,8 @@
-     import renpy.curry
-     import renpy.color
-     import renpy.easy
--    import renpy.encryption
-+    if not switch:
-+        import renpy.encryption
-     import renpy.execution
-     import renpy.lexer
-     import renpy.loadsave
-diff -Naur renpy_orig/renpy/bootstrap.py renpy_mod/renpy/bootstrap.py
---- renpy_orig/renpy/bootstrap.py	2024-12-07 23:25:07.187025300 -0300
-+++ renpy_mod/renpy/bootstrap.py	2026-08-09 20:57:02.951430883 -0300
-@@ -302,6 +302,11 @@
-     if args.command == "run" and not renpy.mobile:
-         import renpy.display.presplash # @Reimport
-         renpy.display.presplash.start(basedir, gamedir)
-+    if renpy.switch:
-+        import _otrhlibnx
-+        import renpy.display.presplash
-+        renpy.display.presplash.start_switch(gamedir)
-+        _otrhlibnx.startboost()
+ macapp: bool = False
+diff --git a/renpy/bootstrap.py b/renpy/bootstrap.py
+index 4d3b125..415adb7 100644
+--- a/renpy/bootstrap.py
++++ b/renpy/bootstrap.py
+@@ -339,6 +339,19 @@ def bootstrap(renpy_base):
  
+         renpy.display.presplash.start(basedir, gamedir)
+ 
++    # Nintendo Switch: full-screen presplash and a CPU boost while loading.
++    if renpy.switch and args.command == "run":
++        import renpy.display.presplash
++
++        renpy.display.presplash.start_switch(gamedir)
++
++        try:
++            import _otrhlibnx  # type: ignore
++
++            _otrhlibnx.startboost()
++        except Exception:
++            pass
++
      # Ditto for the Ren'Py module.
      try:
-@@ -351,7 +356,10 @@
-                 renpy.config.gamedir = gamedir
-                 renpy.config.args = [ ] # type: ignore
- 
--                renpy.config.logdir = renpy.__main__.path_to_logdir(basedir)
-+                if renpy.switch:
-+                    renpy.config.logdir = "save:/Logs/"
-+                else:
-+                    renpy.config.logdir = renpy.__main__.path_to_logdir(basedir)
- 
-                 if not os.path.exists(renpy.config.logdir):
-                     os.makedirs(renpy.config.logdir, 0o777)
-@@ -364,6 +372,10 @@
-                 raise
- 
-             except renpy.game.UtterRestartException:
-+                if renpy.switch:
-+                     import _otrhlibnx
-+                     _otrhlibnx.restartprogram()
-+                     return
- 
-                 # On an UtterRestart, reload Ren'Py.
-                 renpy.reload_all()
-@@ -372,8 +384,15 @@
- 
+         import _renpy  # type: ignore
+@@ -411,8 +424,21 @@ def bootstrap(renpy_base):
              except renpy.game.QuitException as e:
                  exit_status = e.status
+ 
 +                if renpy.switch:
-+                    import _otrhlibnx
-+                    _otrhlibnx.commitsave()
- 
++                    try:
++                        import _otrhlibnx  # type: ignore
++
++                        _otrhlibnx.commitsave()
++                    except Exception:
++                        pass
++
                  if e.relaunch:
+-                    relaunch()
 +                    if renpy.switch:
-+                         import _otrhlibnx
-+                         _otrhlibnx.restartprogram()
-+                         return
-                     if hasattr(sys, "renpy_executable"):
-                         subprocess.Popen([sys.renpy_executable] + sys.argv[1:]) # type: ignore
-                     else:
-diff -Naur renpy_orig/renpy/common/00sync.rpy renpy_mod/renpy/common/00sync.rpy
---- renpy_orig/renpy/common/00sync.rpy	2024-12-07 23:25:07.188025200 -0300
-+++ renpy_mod/renpy/common/00sync.rpy	2026-08-09 20:57:02.951534019 -0300
-@@ -219,7 +219,7 @@
++                        # No subprocesses on the Switch: restart in-process.
++                        renpy.reload_all()
++                        exit_status = None
++                    else:
++                        relaunch()
  
-     def upload():
+             except renpy.game.ParseErrorException:
+                 pass
+diff --git a/renpy/common/00sync.rpy b/renpy/common/00sync.rpy
+index 9df090a..336fe8a 100644
+--- a/renpy/common/00sync.rpy
++++ b/renpy/common/00sync.rpy
+@@ -38,7 +38,8 @@
+ init -1100 python:
  
--        if not config.has_sync:
-+        if not config.has_sync or renpy.switch:
-             return
+     # True if Ren'Py's Save Sync is enabled, False otherwise.
+-    config.has_sync = True
++    # (Disabled on the Nintendo Switch homebrew build: no HTTPS stack there.)
++    config.has_sync = not renpy.switch
  
-         if not renpy.call_screen("sync_confirm"):
-diff -Naur renpy_orig/renpy/config.py renpy_mod/renpy/config.py
---- renpy_orig/renpy/config.py	2024-12-07 23:25:07.189025400 -0300
-+++ renpy_mod/renpy/config.py	2026-08-09 20:57:02.952680306 -0300
-@@ -322,7 +322,7 @@
- all_character_callbacks = [ ]
- 
- # Should autsave be enabled?
--has_autosave = True
-+has_autosave = False
- 
- # The number of autosave slots we have.
- autosave_slots = 10
-@@ -575,10 +575,10 @@
- adjust_view_size = None
- 
- # True if we should autosave when a choice occurs.
--autosave_on_choice = True
-+autosave_on_choice = False
- 
- # True if we should autosave when the player has input something.
--autosave_on_input = True
-+autosave_on_input = False
- 
- # A list of channels we should emphasize the audio on.
- emphasize_audio_channels = [ 'voice' ]
-@@ -684,7 +684,7 @@
- dynamic_images = True
- 
- # Should Ren'Py save when the mobile app may terminate?
--save_on_mobile_background = True
-+save_on_mobile_background = False
- 
- # Should Ren'Py quit on mobile background?
- quit_on_mobile_background = False
-@@ -1041,7 +1041,7 @@
- keep_side_render_order = True
- 
- # Should this game enable and require gl2?
--gl2 = True
-+gl2 = True if not renpy.switch else False
- 
- # Does this game use the depth buffer? If so, how many bits of depth should
- # it use?
-diff -Naur renpy_orig/renpy/display/behavior.py renpy_mod/renpy/display/behavior.py
---- renpy_orig/renpy/display/behavior.py	2024-12-07 23:25:07.190025300 -0300
-+++ renpy_mod/renpy/display/behavior.py	2026-08-09 20:57:02.952860601 -0300
-@@ -1796,6 +1796,9 @@
+     # The server to sync against, to allow sync against a test server.
+     config.sync_server = "https://sync.renpy.org"
+diff --git a/renpy/display/behavior.py b/renpy/display/behavior.py
+index c6612f5..de66d7b 100644
+--- a/renpy/display/behavior.py
++++ b/renpy/display/behavior.py
+@@ -1806,6 +1806,11 @@ class Input(renpy.text.text.Text):
              self.edit_text = ""
              raw_text = ev.text
  
++            # The Switch software keyboard delivers the whole string at once
++            # and closes, so treat it as a completed input.
 +            if renpy.switch:
 +                return ev.text
 +
          elif ev.type == pygame.KEYDOWN:
- 
              if ev.unicode and ord(ev.unicode[0]) >= 32:
-diff -Naur renpy_orig/renpy/display/core.py renpy_mod/renpy/display/core.py
---- renpy_orig/renpy/display/core.py	2024-12-07 23:25:07.190025300 -0300
-+++ renpy_mod/renpy/display/core.py	2026-08-09 20:57:02.954156598 -0300
-@@ -1002,6 +1002,10 @@
+                 raw_text = ev.unicode
+diff --git a/renpy/display/core.py b/renpy/display/core.py
+index 89c74d1..2690c1b 100644
+--- a/renpy/display/core.py
++++ b/renpy/display/core.py
+@@ -902,6 +902,14 @@ class Interface:
          # Kill off the presplash.
          renpy.display.presplash.end()
  
 +        if renpy.switch:
-+            import _otrhlibnx
-+            _otrhlibnx.disableboost()
++            try:
++                import _otrhlibnx  # type: ignore
++
++                _otrhlibnx.disableboost()
++            except Exception:
++                pass
 +
          # Initialize audio.
          pygame.display.hint("SDL_APP_NAME", (renpy.config.name or "Ren'Py Game").encode("utf-8"))
          pygame.display.hint("SDL_AUDIO_DEVICE_APP_NAME", (renpy.config.name or "Ren'Py Game").encode("utf-8"))
-@@ -1200,7 +1204,7 @@
+@@ -1102,7 +1110,7 @@ class Interface:
  
          renpy.config.renderer = renderer
  
 -        if renpy.android or renpy.ios or renpy.emscripten:
 +        if renpy.android or renpy.ios or renpy.emscripten or renpy.switch:
-             renderers = [ "gles" ]
+             renderers = ["gles2"]
          elif renpy.windows:
-             renderers = [ "gl", "angle", "gles" ]
-@@ -1222,7 +1226,7 @@
+             renderers = ["gl2", "angle2", "gles2"]
+@@ -1117,7 +1125,7 @@ class Interface:
              renderer = "auto"
  
          # Software renderer is the last hope for PC .
 -        if not (renpy.android or renpy.ios or renpy.emscripten):
 +        if not (renpy.android or renpy.ios or renpy.emscripten or renpy.switch):
-             renderers = renderers + [ "sw" ]
+             renderers = renderers + ["sw"]
  
          if renderer in renderers:
-@@ -1423,7 +1427,7 @@
-         if not self.started:
-             return
- 
--        if background and not renpy.emscripten:
-+        if background and not (renpy.emscripten or renpy.switch):
-             self.bgscreenshot_event.clear()
-             self.bgscreenshot_needed = True
- 
-@@ -2024,7 +2028,8 @@
-                 System = autoclass("java.lang.System")
-                 System.exit(0)
- 
--            sys.exit(0)
-+            if not renpy.switch:
-+                sys.exit(0)
- 
-         print("Freeing memory.")
- 
-diff -Naur renpy_orig/renpy/display/presplash.py renpy_mod/renpy/display/presplash.py
---- renpy_orig/renpy/display/presplash.py	2024-12-07 23:25:07.191025500 -0300
-+++ renpy_mod/renpy/display/presplash.py	2026-08-09 20:57:02.954156598 -0300
-@@ -259,3 +259,20 @@
-         emscripten.run_script(r"""progress(%d, %d);""" % (done, total))
+diff --git a/renpy/display/presplash.py b/renpy/display/presplash.py
+index be35d80..5629e3b 100644
+--- a/renpy/display/presplash.py
++++ b/renpy/display/presplash.py
+@@ -264,3 +264,56 @@ def progress(kind, done, total):
+     emscripten.run_script(r"""progress(%d, %d);""" % (done, total))
  
      emscripten.sleep(0)
 +
 +
 +def start_switch(gamedir):
-+    filenames = ['/presplash.png', '/presplash.jpg']
-+    for fn in filenames:
-+        fn = gamedir + fn
-+        if os.path.exists(fn):
-+            break
-+    else:
++    """
++    Nintendo Switch: show the presplash full-screen while the game loads.
++
++    The window is stored in `window`, so pump_window() keeps it responsive
++    and end() destroys it before the real display is created.
++    """
++
++    global window
++    global progress_bar
++
++    fn = find_file("presplash", root=gamedir)
++
++    if fn is None:
++        fn = find_file("android-presplash", root=gamedir)
++
++    if fn is None:
 +        return
 +
-+    import pygame_sdl2 as pygame
-+    pygame.display.init()
-+    dis = pygame.display.set_mode((1920, 1080))
-+    presplashImg = pygame.image.load(fn)
-+    dis.blit(presplashImg, (0, 0))
-+    pygame.display.flip()
-diff -Naur renpy_orig/renpy/gl/gldraw.pyx renpy_mod/renpy/gl/gldraw.pyx
---- renpy_orig/renpy/gl/gldraw.pyx	2024-12-07 23:25:07.193025400 -0300
-+++ renpy_mod/renpy/gl/gldraw.pyx	2026-08-09 20:57:02.954520509 -0300
-@@ -150,7 +150,7 @@
-         gltexture.free_texture_numbers()
++    try:
++        pygame.display.init()
++
++        bounds = pygame.display.get_display_bounds(0)
++        bw, bh = bounds[2], bounds[3]
++
++        if not bw or not bh:
++            bw, bh = 1280, 720
++
++        window = pygame.display.Window(sys.argv[0], (bw, bh), flags=pygame.WINDOW_BORDERLESS, pos=(0, 0))
++
++        surface = window.get_surface()
++        surface.fill((0, 0, 0, 255))
++
++        image = pygame.image.load(fn).convert_alpha(surface)
++        iw, ih = image.get_size()
++
++        scale = min(bw / iw, bh / ih)
++        if scale != 1.0:
++            image = pygame.transform.smoothscale(image, (max(1, int(iw * scale)), max(1, int(ih * scale))))
++            iw, ih = image.get_size()
++
++        surface.blit(image, ((bw - iw) // 2, (bh - ih) // 2))
++        window.update()
++
++    except Exception:
++        import traceback
++
++        traceback.print_exc()
++
++        window = None
++        progress_bar = None
+diff --git a/renpy/gl2/assimp.py b/renpy/gl2/assimp.py
+new file mode 100644
+index 0000000..3c3d01e
+--- /dev/null
++++ b/renpy/gl2/assimp.py
+@@ -0,0 +1,55 @@
++# Nintendo Switch homebrew build: stand-in for the renpy.gl2.assimp Cython
++# module.
++#
++# The real module wraps the Open Asset Importer (assimp) C++ library to load
++# GLTF 3D models. assimp is not available for devkitA64, so on the Switch this
++# pure-Python module provides the same names: the engine hooks become no-ops,
++# and GLTFModel raises a clear error if a game actually tries to show a model.
++# 2D visual novels never touch it.
++#
++# On every other platform the compiled module (assimp.pyx) takes precedence.
++
++import threading
++
++import renpy
++from renpy.display.displayable import Displayable
++
++cache = {}
++predicted = None
++new_predicted = set()
++
++
++def free_memory():
++    cache.clear()
++
++
++class _Loader(object):
++    pass
++
++
++loader = _Loader()
++"The loader used to load in imported models."
++
++loader_lock = threading.Lock()
++"The lock used to protect the loader."
++
++
++class GLTFModel(Displayable):
++    """
++    GLTF models are not supported by the Nintendo Switch homebrew build.
++    """
++
++    def __init__(self, filename, *args, **kwargs):
++        super(GLTFModel, self).__init__(**{k: v for k, v in kwargs.items() if k == "style"})
++        self.filename = filename
++
++    def render(self, width, height, st, at):
++        raise Exception("GLTFModel({!r}): 3D models are not supported on the Nintendo Switch build.".format(self.filename))
++
++
++def finish_predict():
++    pass
++
++
++def preload():
++    pass
+diff --git a/renpy/gl2/gl2draw.pyx b/renpy/gl2/gl2draw.pyx
+index cb66af0..04acd3a 100644
+--- a/renpy/gl2/gl2draw.pyx
++++ b/renpy/gl2/gl2draw.pyx
+@@ -373,7 +373,7 @@ cdef class GL2Draw:
  
- 
--        if renpy.android or renpy.ios or renpy.emscripten:
-+        if renpy.android or renpy.ios or renpy.emscripten or renpy.switch:
-             pygame.display.get_window().recreate_gl_context(always=renpy.emscripten)
- 
-         # Are we in fullscreen mode?
-@@ -233,7 +233,7 @@
- 
-         fullscreen = renpy.game.preferences.fullscreen
+         pwidth, pheight = self.select_physical_size(physical_size)
  
 -        if renpy.android or renpy.ios:
 +        if renpy.android or renpy.ios or renpy.switch:
              fullscreen = True
+         elif renpy.emscripten:
+             fullscreen = False
+@@ -507,7 +507,7 @@ cdef class GL2Draw:
+         # Do additional setup needed.
+         renpy.display.pgrender.set_rgba_masks()
+ 
+-        if renpy.android or renpy.ios:
++        if renpy.android or renpy.ios or renpy.switch:
+             self.redraw_period = 1.0
+ 
+         elif renpy.emscripten:
+@@ -528,7 +528,7 @@ cdef class GL2Draw:
+         if first:
+             full_reset = True
+ 
+-        if renpy.android or renpy.ios or renpy.emscripten:
++        if renpy.android or renpy.ios or renpy.emscripten or renpy.switch:
+             full_reset = True
+ 
+         if not first:
+@@ -649,7 +649,7 @@ cdef class GL2Draw:
+ 
+         if renpy.emscripten:
+             fullscreen = False
+-        elif renpy.android or renpy.ios:
++        elif renpy.android or renpy.ios or renpy.switch:
+             fullscreen = True
  
          if renpy.game.preferences.physical_size:
-diff -Naur renpy_orig/renpy/loader.py renpy_mod/renpy/loader.py
---- renpy_orig/renpy/loader.py	2024-12-07 23:25:07.195025400 -0300
-+++ renpy_mod/renpy/loader.py	2026-08-09 20:57:02.954738401 -0300
-@@ -56,8 +56,12 @@
+diff --git a/renpy/loader.py b/renpy/loader.py
+index 3bbdb7d..3783384 100644
+--- a/renpy/loader.py
++++ b/renpy/loader.py
+@@ -53,7 +53,13 @@ def get_path(fn):
      This always returns a path, but the path may or may not be writable.
      """
  
 -    fn = os.path.join(renpy.config.gamedir, fn)
--    dn = os.path.dirname(fn)
-+    if fn.startswith("cache/") and renpy.switch:
-+        fn = "save://" + fn
-+        dn = "save://cache"
++    if renpy.switch:
++        # The game directory is read-only (romfs) on the Switch, so writes go
++        # to the overlay directory that comes first in the search path.
++        fn = renpy.__main__.switch_save_root() + "game/" + fn
 +    else:
 +        fn = os.path.join(renpy.config.gamedir, fn)
-+        dn = os.path.dirname(fn)
++
+     dn = os.path.dirname(fn)
  
      try:
-         if not os.path.exists(dn):
-@@ -756,6 +760,8 @@
+diff --git a/renpy/main.py b/renpy/main.py
+index cf72003..81adaa7 100644
+--- a/renpy/main.py
++++ b/renpy/main.py
+@@ -162,7 +162,30 @@ def choose_variants():
  
-     for d in renpy.config.searchpath:
-         fn = os.path.join(renpy.config.basedir, d, name)
-+        if d.startswith("romfs:"):
-+            fn = os.path.join(d, name)
+     renpy.config.variants = [None]
  
-         add_auto(fn)
- 
-diff -Naur renpy_orig/renpy/log.py renpy_mod/renpy/log.py
---- renpy_orig/renpy/log.py	2024-08-04 22:43:47.872964000 -0300
-+++ renpy_mod/renpy/log.py	2026-08-09 20:57:02.955094925 -0300
-@@ -40,6 +40,7 @@
- 
- real_stdout = sys.stdout
- real_stderr = sys.stderr
-+real_open = open
- 
- # The file events are logged to.
- log_file = None
-@@ -91,7 +92,7 @@
-         if self.file is False:
-             return False
- 
--        if renpy.macapp:
-+        if renpy.macapp or renpy.switch:
-             return False
- 
-         if self.developer and not renpy.config.developer:
-@@ -159,6 +160,18 @@
-             return False
- 
-     def write(self, s, *args):
-+        if renpy.switch:
-+            if not isinstance(s, str):
-+                s = s.decode("latin-1")
-+            if not self.raw_write:
-+                try:
-+                    s = s % args
-+                except Exception:
-+                    s = repr((s,) + args)
-+                s += "\n"
-+            with real_open("save://Logs/log.log", "a+") as f:
-+                f.write(str(s))
-+            return
-         """
-         Formats `s` with args, and writes it to the logfile.
-         """
-diff -Naur renpy_orig/renpy/main.py renpy_mod/renpy/main.py
---- renpy_orig/renpy/main.py	2024-10-07 22:42:38.227803500 -0300
-+++ renpy_mod/renpy/main.py	2026-08-09 20:57:02.955275150 -0300
-@@ -359,6 +359,8 @@
- 
-     # Note the game directory.
-     game.basepath = renpy.config.gamedir
+-    if renpy.android:
 +    if renpy.switch:
-+        renpy.config.searchpath = [ renpy.config.gamedir, "save://" ]
-     renpy.config.commondir = renpy.__main__.path_to_common(renpy.config.renpy_base) # E1101 @UndefinedVariable
-     renpy.config.searchpath = renpy.__main__.predefined_searchpath(renpy.config.commondir) # E1101 @UndefinedVariable
- 
-@@ -479,7 +481,8 @@
-             renpy.game.script.load_script()
- 
-         print(time.time() - start)
--        sys.exit(0)
-+        if not renpy.switch:
-+            sys.exit(0)
- 
-     renpy.game.exception_info = 'After loading the script.'
- 
-diff -Naur renpy_orig/renpy/persistent.py renpy_mod/renpy/persistent.py
---- renpy_orig/renpy/persistent.py	2024-12-07 23:25:07.196025600 -0300
-+++ renpy_mod/renpy/persistent.py	2026-08-09 20:57:02.955326853 -0300
-@@ -572,6 +572,8 @@
-     elif renpy.macintosh:
-         files = [ os.path.expanduser("~/.renpy/persistent"),
-                   os.path.expanduser("~/Library/RenPy/persistent") ]
-+    elif renpy.switch:
-+        files = ["save://MultiPersistent"]
-     else:
-         files = [ os.path.expanduser("~/.renpy/persistent") ]
- 
-diff -Naur renpy_orig/renpy/savelocation.py renpy_mod/renpy/savelocation.py
---- renpy_orig/renpy/savelocation.py	2024-09-05 14:19:41.907415600 -0300
-+++ renpy_mod/renpy/savelocation.py	2026-08-09 20:57:02.955851503 -0300
-@@ -37,6 +37,9 @@
- from renpy.loadsave import clear_slot, safe_rename
- import shutil
- 
-+if renpy.switch:
-+    import _otrhlibnx
++        renpy.config.variants.insert(0, "mobile")  # type: ignore
++        renpy.config.variants.insert(0, "switch")  # type: ignore
 +
- disk_lock = threading.RLock()
- 
- # A suffix used to disambguate temporary files being written by multiple
-@@ -670,6 +673,8 @@
- 
- 
- def quit(): # @ReservedAssignment
-+    if renpy.switch:
-+        return
-     global quit_scan_thread
- 
-     with scan_thread_condition:
-@@ -701,6 +706,9 @@
-     for i in renpy.config.extra_savedirs:
-         location.add(FileLocation(i))
- 
-+    if renpy.switch:
-+        location = FileLocation("save:/Data/")
++        docked = False
 +
-     # Scan the location once.
-     location.scan()
++        try:
++            import _otrhlibnx  # type: ignore
++
++            docked = bool(_otrhlibnx.isdocked())
++        except Exception:
++            pass
++
++        if docked:
++            # TV: large text, controller-first UI.
++            renpy.config.variants.insert(0, "tv")  # type: ignore
++            renpy.config.variants.insert(0, "large")  # type: ignore
++        else:
++            # Handheld: 1280x720 touch screen.
++            renpy.config.variants.insert(0, "touch")  # type: ignore
++            renpy.config.variants.insert(0, "phone")  # type: ignore
++            renpy.config.variants.insert(0, "small")  # type: ignore
++
++    elif renpy.android:
+         renpy.config.variants.insert(0, "mobile")  # type: ignore
+         renpy.config.variants.insert(0, "android")  # type: ignore
  
-diff -Naur renpy_orig/renpy/script.py renpy_mod/renpy/script.py
---- renpy_orig/renpy/script.py	2024-12-07 23:25:07.197025500 -0300
-+++ renpy_mod/renpy/script.py	2026-08-09 20:57:02.955929538 -0300
-@@ -763,7 +763,7 @@
+diff --git a/renpy/persistent.py b/renpy/persistent.py
+index 116fea2..e96d189 100644
+--- a/renpy/persistent.py
++++ b/renpy/persistent.py
+@@ -594,7 +594,7 @@ def MultiPersistent(name, save_on_quit=False):
+     if "RENPY_MULTIPERSISTENT" in os.environ:
+         files = [renpy.exports.fsdecode(os.environ["RENPY_MULTIPERSISTENT"])]
  
-                 pickle_data_after_static_transforms = dumps((data, stmts))
+-    elif renpy.android or renpy.ios:
++    elif renpy.android or renpy.ios or renpy.switch:
+         # Due to the security policy of mobile devices, we store MultiPersistent
+         # in the same place as common persistent.
+         # This is better than not working at all.
+diff --git a/renpy/script.py b/renpy/script.py
+index 0133ccf..ae3d6f9 100644
+--- a/renpy/script.py
++++ b/renpy/script.py
+@@ -900,7 +900,9 @@ class Script(object):
+                     bad_reduction_name=f"<{fn} transformed rpyc data>",
+                 )
  
 -                if not renpy.macapp:
-+                if not (renpy.macapp or renpy.switch):
++                # (Switch: skip when the game is embedded in the read-only
++                # RomFS; a loose game folder on the SD card is writable.)
++                if not (renpy.macapp or (renpy.switch and renpy.config.gamedir.startswith("romfs:"))):
                      try:
                          with open(rpycfn, "wb") as f:
                              self.write_rpyc_header(f)
-diff -Naur renpy_orig/renpy.py renpy_mod/renpy.py
---- renpy_orig/renpy.py	2024-12-08 01:01:54.837609500 -0300
-+++ renpy_mod/renpy.py	2026-08-09 20:57:02.956596627 -0300
-@@ -34,6 +34,8 @@
- # Functions to be customized by distributors. ################################
+diff --git a/src/ffmedia.c b/src/ffmedia.c
+index 96ebc64..4b534ba 100644
+--- a/src/ffmedia.c
++++ b/src/ffmedia.c
+@@ -10,7 +10,8 @@
  
- def path_to_gamedir(basedir, name):
-+    if sys.platform == 'horizon':
-+        return "romfs:/Contents/game"
-     """
-     Returns the absolute path to the directory containing the game
-     scripts an assets. (This becomes config.gamedir.)
-@@ -79,6 +81,8 @@
+ #include <stdlib.h>
  
+-#ifndef _WIN32
++/* Nintendo Switch (newlib): use SDL_calloc/SDL_free instead. */
++#if !defined(_WIN32) && !defined(__SWITCH__)
+ #define USE_POSIX_MEMALIGN
+ #endif
  
- def path_to_common(renpy_base):
-+    if sys.platform == 'horizon':
-+        return "romfs:/Contents/renpy/common"
-     """
-     Returns the absolute path to the Ren'Py common directory.
- 
-@@ -123,6 +127,9 @@
-         except Exception:
-             return False
- 
-+    if renpy.switch:
-+        return "save:/Data/"
-+
-     # Android.
-     if renpy.android:
-         paths = [
-@@ -207,6 +214,8 @@
- # Returns the path to the Ren'Py base directory (containing common and
- # the launcher, usually.)
- def path_to_renpy_base():
-+    if sys.platform == 'horizon':
-+        return "romfs:/Contents"
-     """
-     Returns the absolute path to the Ren'Py base directory.
-     """
-@@ -302,4 +311,10 @@
- 
- 
- if __name__ == "__main__":
--    main()
-+    try:
-+        main()
-+    except:
-+        if sys.platform == 'horizon':
-+            with open("save://exception.log", "w") as f:
-+                import traceback
-+                f.write(traceback.format_exc())
-diff -Naur renpy_orig/renpy/audio/renpysound.pyx renpy_mod/renpy/audio/renpysound.pyx
---- renpy_orig/renpy/audio/renpysound.pyx	2024-12-07 23:25:07.208025500 -0300
-+++ renpy_mod/renpy/audio/renpysound.pyx	2026-08-10 00:00:00.000000000 -0300
-@@ -90,12 +90,12 @@
- 
-     int RPS_get_sample_rate()
-     char *RPS_get_error()
- 
--    void (*RPS_generate_audio_c_function)(float *stream, int length)
--    void (*RPS_apply_audio_filter)(object, float *stream, int length, int channels, int sample_rate)
-+    void (*RPS_generate_audio_c_function)(float *stream, int length) noexcept
-+    void (*RPS_apply_audio_filter)(object, float *stream, int length, int channels, int sample_rate) noexcept
- 
- 
- from renpy.audio.filter cimport get_apply_audio_filter
--RPS_apply_audio_filter = <void (*)(object, float *, int, int, int)> get_apply_audio_filter()
-+RPS_apply_audio_filter = <void (*)(object, float *, int, int, int) noexcept> get_apply_audio_filter()
- 
- 
- def check_error():
-@@ -518,7 +518,7 @@
-     if not isinstance(fn, int):
-         import ctypes
-         fn = ctypes.cast(fn, ctypes.c_void_p).value
- 
--    RPS_generate_audio_c_function = <void (*)(float *, int)> <uintptr_t> fn
-+    RPS_generate_audio_c_function = <void (*)(float *, int) noexcept> <uintptr_t> fn
- 
- 
- # Store the sample surfaces so they stay alive.
-diff -Naur renpy_orig/renpy/text/ftfont.pyx renpy_mod/renpy/text/ftfont.pyx
---- renpy_orig/renpy/text/ftfont.pyx	2024-12-07 23:25:07.235025400 -0300
-+++ renpy_mod/renpy/text/ftfont.pyx	2026-08-10 00:00:00.000000000 -0300
-@@ -120,7 +120,7 @@
- 
-     return False
- 
--cdef unsigned long io_func(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count):
-+cdef unsigned long io_func(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count) noexcept:
-     """
-     Seeks to offset, and then reads count bytes from the stream into buffer.
-     """
-@@ -157,7 +157,7 @@
- 
-     return count
- 
--cdef void close_func(FT_Stream stream):
-+cdef void close_func(FT_Stream stream) noexcept:
-     """
-     Close the stream.
- 
-diff -Naur renpy_orig/renpy/text/hbfont.pyx renpy_mod/renpy/text/hbfont.pyx
---- renpy_orig/renpy/text/hbfont.pyx	2024-12-07 23:25:07.237025300 -0300
-+++ renpy_mod/renpy/text/hbfont.pyx	2026-08-10 00:00:00.000000000 -0300
-@@ -246,7 +246,7 @@
- 
-     return False
- 
--cdef unsigned long io_func(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count):
-+cdef unsigned long io_func(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count) noexcept:
-     """
-     Seeks to offset, and then reads count bytes from the stream into buffer.
-     """
-@@ -283,7 +283,7 @@
- 
-     return count
- 
--cdef void close_func(FT_Stream stream):
-+cdef void close_func(FT_Stream stream) noexcept:
-     """
-     Close the stream.
- 
-diff -Naur renpy_orig/module/ffmedia.c renpy_mod/module/ffmedia.c
---- renpy_orig/module/ffmedia.c	2024-12-07 23:25:07.185025200 -0300
-+++ renpy_mod/module/ffmedia.c	2026-08-10 00:00:00.000000000 -0300
-@@ -1,6 +1,7 @@
- #include <libavcodec/avcodec.h>
- #include <libavformat/avformat.h>
- #include <libswresample/swresample.h>
-+#include <libavutil/channel_layout.h>
- #include <libavutil/time.h>
- #include <libavutil/pixfmt.h>
- #include <libswscale/swscale.h>
-@@ -69,7 +70,7 @@
- 
- }
- 
--static int rwops_write(void *opaque, uint8_t *buf, int buf_size) {
-+static int rwops_write(void *opaque, const uint8_t *buf, int buf_size) {
-     printf("Writing to an SDL_rwops is a really bad idea.\n");
-     return -1;
- }
-@@ -688,27 +689,55 @@
- 			}
- 
-             converted_frame->sample_rate = audio_sample_rate;
--            converted_frame->channel_layout = AV_CH_LAYOUT_STEREO;
-             converted_frame->format = AV_SAMPLE_FMT_S16;
- 
-+#if LIBAVUTIL_VERSION_MAJOR >= 59
-+            converted_frame->ch_layout = (AVChannelLayout) AV_CHANNEL_LAYOUT_STEREO;
-+
-+			if (!ms->audio_decode_frame->ch_layout.nb_channels) {
-+				int input_channels = ms->audio_context->ch_layout.nb_channels;
-+
-+				if (input_channels) {
-+					av_channel_layout_default(&ms->audio_decode_frame->ch_layout, input_channels);
-+				}
-+			}
-+
-+			if (audio_equal_mono && (ms->audio_decode_frame->ch_layout.nb_channels == 1)) {
-+				swr_alloc_set_opts2(
-+                    &ms->swr,
-+                    &converted_frame->ch_layout,
-+                    converted_frame->format,
-+                    converted_frame->sample_rate,
-+                    &ms->audio_decode_frame->ch_layout,
-+                    ms->audio_decode_frame->format,
-+                    ms->audio_decode_frame->sample_rate,
-+                    0,
-+                    NULL);
-+
-+				swr_set_matrix(ms->swr, stereo_matrix, 1);
-+			}
-+#else
-+            converted_frame->channel_layout = AV_CH_LAYOUT_STEREO;
-+
- 			if (!ms->audio_decode_frame->channel_layout) {
- 				ms->audio_decode_frame->channel_layout = av_get_default_channel_layout(ms->audio_decode_frame->channels);
- 
- 				if (audio_equal_mono && (ms->audio_decode_frame->channels == 1)) {
--				    swr_alloc_set_opts(
-+					swr_alloc_set_opts(
-                         ms->swr,
-                         converted_frame->channel_layout,
-                         converted_frame->format,
-@@ -720,9 +749,10 @@
-                         0,
-                         NULL);
- 
--				    swr_set_matrix(ms->swr, stereo_matrix, 1);
-+					swr_set_matrix(ms->swr, stereo_matrix, 1);
- 				}
- 			}
-+#endif
- 
- 			if(swr_convert_frame(ms->swr, converted_frame, ms->audio_decode_frame)) {
- 				av_frame_free(&converted_frame);

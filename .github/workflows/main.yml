@@ -1,33 +1,57 @@
 name: RenpySwitch Build
-run-name: ${{ github.actor }} building Ren'Py Switch 🎮
-on: [push]
+run-name: ${{ github.actor }} building Ren'Py 8.5.3 for Switch
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Title shown in the Homebrew Menu"
+        default: "Ren'Py"
+      app_author:
+        description: "Author shown in the Homebrew Menu"
+        default: "Ren'Py Switch"
 
 jobs:
-    build-artifact:
-        name: Build
-        runs-on: ubuntu-24.04
-        container: devkitpro/devkita64:latest
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkita64:latest
+    timeout-minutes: 120
 
-        steps:
-        - name: Check devkitPro environment
-          run: echo $DEVKITPRO
-            
-        - name: Checkout repository
-          uses: actions/checkout@master
-          with:
-            submodules: recursive
-            
-        - name: Fix line endings
-          run: sed -i 's/\r$//' setup.bash build.bash link_sources.bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        - name: Setup environment
-          run: sudo bash setup.bash
-        
-        - name: Build
-          run: sudo bash build.bash
+      - name: Fix line endings
+        run: sed -i 's/\r$//' setup.bash build.bash pack_nro.bash
 
-        - name: Upload raw artifact
-          uses: actions/upload-artifact@master
-          with:
-            name: raw
-            path: raw
+      - name: Cache Ren'Py downloads
+        uses: actions/cache@v4
+        with:
+          path: downloads
+          key: renpy-downloads-8.5.3
+
+      - name: Setup (portlibs, NXPython, Ren'Py sources)
+        run: bash setup.bash
+
+      - name: Build
+        env:
+          APP_NAME: ${{ github.event.inputs.app_name || 'Ren''Py' }}
+          APP_AUTHOR: ${{ github.event.inputs.app_author || 'Ren''Py Switch' }}
+        run: bash build.bash
+
+      - name: Upload launcher (.nro)
+        uses: actions/upload-artifact@v4
+        with:
+          name: renpy-switch-nro
+          path: raw/renpy-switch.nro
+
+      - name: Upload re-packaging kit (ELF + RomFS + NSO)
+        uses: actions/upload-artifact@v4
+        with:
+          name: renpy-switch-raw
+          path: |
+            raw/renpy-switch.elf
+            raw/exefs/main
+            raw/romfs

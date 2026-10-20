@@ -1,1 +1,0 @@
-/home/jvrcruz/RenpySwitch/pygame_sdl2-source/gen3-static/pygame_sdl2.render.c

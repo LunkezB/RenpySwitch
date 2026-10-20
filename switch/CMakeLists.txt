@@ -1,179 +1,141 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.13)
+
+# Ren'Py 8.5 for Nintendo Switch homebrew: one static executable containing
+# CPython 3.14 (NXPython), Ren'Py's Cython modules and the launcher.
+#
+# Configure with the devkitPro toolchain and the generated module list:
+#   cmake -S switch -B build-switch -DRENPY_GEN_OUT=<dir from switch_modules.py>
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     if(DEFINED ENV{DEVKITPRO})
-        set(DEVKITPRO $ENV{DEVKITPRO})
-        set(CMAKE_TOOLCHAIN_FILE "$ENV{DEVKITPRO}/switch.cmake" CACHE PATH "toolchain file")
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{DEVKITPRO}/cmake/Switch.cmake" CACHE PATH "toolchain file")
     else()
-        message(FATAL_ERROR "Please define DEVKITPRO to point to your SDK path!")
+        message(FATAL_ERROR "Please define DEVKITPRO to point to your devkitPro install.")
     endif()
 endif()
 
-project(renpy-switch)
+project(renpy-switch C CXX)
 
-set(SWITCH_APP_NAME "Ren'Py")
-set(SWITCH_AUTHOR   "renpytom")
-set(SWITCH_VERSION  "8.3.4")
+set(DEVKITPRO $ENV{DEVKITPRO})
+set(PORTLIBS ${DEVKITPRO}/portlibs/switch)
 
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE RelWithDebInfo)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(C_FLAGS
-    -DFRIBIDI_ENTRY=
-    -DHAVE_CONFIG_H=1
-)
-
-set(OPTIMIZATION_FLAGS
-    -Ofast
-)
-
-set(INCLUDES
-    ${DEVKITPRO}/portlibs/switch/include/python3.14
-)
-
-set(SOURCES
-    source/main.c
-)
-
-set(CMAKE_PREFIX_PATH "${DEVKITPRO}/portlibs/switch")
-set(ENV{PKG_CONFIG_PATH} "${DEVKITPRO}/portlibs/switch/lib/pkgconfig")
-
-find_package(PkgConfig REQUIRED)
-# Workaround for library paths not being set correctly
-set(pkgcfg_lib_FREETYPE2_nx /opt/devkitpro/libnx/lib/libnx.a)
-set(pkgcfg_lib_LIBAVFILTER_nx /opt/devkitpro/libnx/lib/libnx.a)
-set(pkgcfg_lib_LIBAVFORMAT_nx /opt/devkitpro/libnx/lib/libnx.a)
-set(pkgcfg_lib_EGL_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libm.a)
-set(pkgcfg_lib_FREETYPE2_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libm.a)
-set(pkgcfg_lib_GLAPI_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libm.a)
-set(pkgcfg_lib_GLESV2_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libm.a)
-set(pkgcfg_lib_LIBAVCODEC_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_LIBAVFILTER_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_LIBAVFORMAT_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_LIBAVUTIL_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_LIBSWRESAMPLE_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_LIBSWSCALE_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_SDL2_IMAGE_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_SDL2_MIXER_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_SDL2_TTF_m /opt/devkitpro/devkitA64/aarch64-none-elf/lib/libm.a)
-set(pkgcfg_lib_SDL2_EGL /opt/devkitpro/portlibs/switch/lib/libEGL.a)
-set(pkgcfg_lib_SDL2_GFX_EGL /opt/devkitpro/portlibs/switch/lib/libEGL.a)
-set(pkgcfg_lib_SDL2_IMAGE_EGL /opt/devkitpro/portlibs/switch/lib/libEGL.a)
-set(pkgcfg_lib_SDL2_MIXER_EGL /opt/devkitpro/portlibs/switch/lib/libEGL.a)
-set(pkgcfg_lib_SDL2_TTF_EGL /opt/devkitpro/portlibs/switch/lib/libEGL.a)
-set(pkgcfg_lib_LIBDRM_NOUVEAU_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_GFX_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_IMAGE_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_MIXER_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_TTF_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_drm_nouveau /opt/devkitpro/portlibs/switch/lib/libdrm_nouveau.a)
-set(pkgcfg_lib_SDL2_GFX_SDL2 /opt/devkitpro/portlibs/switch/lib/libSDL2.a)
-set(pkgcfg_lib_SDL2_IMAGE_SDL2 /opt/devkitpro/portlibs/switch/lib/libSDL2.a)
-set(pkgcfg_lib_SDL2_MIXER_SDL2 /opt/devkitpro/portlibs/switch/lib/libSDL2.a)
-set(pkgcfg_lib_SDL2_SDL2 /opt/devkitpro/portlibs/switch/lib/libSDL2.a)
-set(pkgcfg_lib_SDL2_TTF_SDL2 /opt/devkitpro/portlibs/switch/lib/libSDL2.a)
-set(pkgcfg_lib_SDL2_IMAGE_z /opt/devkitpro/portlibs/switch/lib/libz.a)
-set(pkgcfg_lib_SDL2_TTF_z /opt/devkitpro/portlibs/switch/lib/libz.a)
-set(pkgcfg_lib_SDL2_GFX_glapi /opt/devkitpro/portlibs/switch/lib/libglapi.a)
-set(pkgcfg_lib_SDL2_IMAGE_glapi /opt/devkitpro/portlibs/switch/lib/libglapi.a)
-set(pkgcfg_lib_SDL2_MIXER_glapi /opt/devkitpro/portlibs/switch/lib/libglapi.a)
-set(pkgcfg_lib_SDL2_TTF_glapi /opt/devkitpro/portlibs/switch/lib/libglapi.a)
-set(pkgcfg_lib_SDL2_glapi /opt/devkitpro/portlibs/switch/lib/libglapi.a)
-set(pkgcfg_lib_SDL2_IMAGE_SDL2_image /opt/devkitpro/portlibs/switch/lib/libSDL2_image.a)
-set(pkgcfg_lib_SDL2_GFX_SDL2_gfx /opt/devkitpro/portlibs/switch/lib/libSDL2_gfx.a)
-set(pkgcfg_lib_SDL2_IMAGE_jpeg /opt/devkitpro/portlibs/switch/lib/libjpeg.a)
-set(pkgcfg_lib_SDL2_IMAGE_png16 /opt/devkitpro/portlibs/switch/lib/libpng16.a)
-set(pkgcfg_lib_SDL2_IMAGE_webp /opt/devkitpro/portlibs/switch/lib/libwebp.a)
-set(pkgcfg_lib_SDL2_MIXER_SDL2_mixer /opt/devkitpro/portlibs/switch/lib/libSDL2_mixer.a)
-set(pkgcfg_lib_SDL2_MIXER_modplug /opt/devkitpro/portlibs/switch/lib/libmodplug.a)
-set(pkgcfg_lib_SDL2_MIXER_mpg123 /opt/devkitpro/portlibs/switch/lib/libmpg123.a)
-set(pkgcfg_lib_SDL2_MIXER_ogg /opt/devkitpro/portlibs/switch/lib/libogg.a)
-set(pkgcfg_lib_SDL2_MIXER_opus /opt/devkitpro/portlibs/switch/lib/libopus.a)
-set(pkgcfg_lib_SDL2_MIXER_opusfile /opt/devkitpro/portlibs/switch/lib/libopusfile.a)
-set(pkgcfg_lib_SDL2_MIXER_stdc++ /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libstdc++.a)
-set(pkgcfg_lib_SDL2_MIXER_vorbisidec /opt/devkitpro/portlibs/switch/lib/libvorbisidec.a)
-set(pkgcfg_lib_SDL2_TTF_SDL2_ttf /opt/devkitpro/portlibs/switch/lib/libSDL2_ttf.a)
-set(pkgcfg_lib_SDL2_TTF_bz2 /opt/devkitpro/portlibs/switch/lib/libbz2.a)
-set(pkgcfg_lib_SDL2_TTF_freetype /opt/devkitpro/portlibs/switch/lib/libfreetype.a)
-set(pkgcfg_lib_SDL2_TTF_png16 /opt/devkitpro/portlibs/switch/lib/libpng16.a)
-
-pkg_check_modules(EGL REQUIRED IMPORTED_TARGET egl)
-pkg_check_modules(FREETYPE2 REQUIRED IMPORTED_TARGET freetype2)
-pkg_check_modules(GLAPI REQUIRED IMPORTED_TARGET glapi)
-pkg_check_modules(GLESV2 REQUIRED IMPORTED_TARGET glesv2)
-pkg_check_modules(LIBAVCODEC REQUIRED IMPORTED_TARGET libavcodec)
-pkg_check_modules(LIBAVFILTER REQUIRED IMPORTED_TARGET libavfilter)
-pkg_check_modules(LIBAVFORMAT REQUIRED IMPORTED_TARGET libavformat)
-pkg_check_modules(LIBAVUTIL REQUIRED IMPORTED_TARGET libavutil)
-pkg_check_modules(LIBDRM_NOUVEAU REQUIRED IMPORTED_TARGET libdrm_nouveau)
-pkg_check_modules(LIBSWRESAMPLE REQUIRED IMPORTED_TARGET libswresample)
-pkg_check_modules(LIBSWSCALE REQUIRED IMPORTED_TARGET libswscale)
-pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-pkg_check_modules(SDL2_GFX REQUIRED IMPORTED_TARGET SDL2_gfx)
-pkg_check_modules(SDL2_IMAGE REQUIRED IMPORTED_TARGET SDL2_image)
-pkg_check_modules(SDL2_MIXER REQUIRED IMPORTED_TARGET SDL2_mixer)
-pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
-pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
-
-# Workaround for pkg-config not expanding $(DEVKITPRO)
-if(LIBDRM_NOUVEAU_INCLUDE_DIRS)
-    set_property(TARGET PkgConfig::LIBDRM_NOUVEAU PROPERTY
-                 INTERFACE_INCLUDE_DIRECTORIES "${DEVKITPRO}/portlibs/switch/include")
+if(NOT RENPY_GEN_OUT)
+    message(FATAL_ERROR "RENPY_GEN_OUT is not set (run scripts/switch_modules.py first).")
 endif()
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+# RENPY_SOURCE_DIR, RENPY_GEN_DIR, RENPY_MODULE_SOURCES
+include(${RENPY_GEN_OUT}/renpy_modules.cmake)
 
-set(PYTHON_STATIC_LIBS
-    ${DEVKITPRO}/portlibs/switch/lib/libpython3.14.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libpyexpat.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libmpdec.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_Hash_MD5.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_Hash_SHA1.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_Hash_SHA2.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_Hash_SHA3.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_Hash_BLAKE2.a
-    ${DEVKITPRO}/portlibs/switch/lib/python3.14/config-3.14/libHacl_HMAC.a
-    ${DEVKITPRO}/portlibs/switch/lib/libcurl.a
-    ${DEVKITPRO}/portlibs/switch/lib/liblzma.a
-    ${DEVKITPRO}/portlibs/switch/lib/libzstd.a
-    ${DEVKITPRO}/portlibs/switch/lib/libmbedtls.a
-    ${DEVKITPRO}/portlibs/switch/lib/libmbedx509.a
-    ${DEVKITPRO}/portlibs/switch/lib/libmbedcrypto.a
+# ---------------------------------------------------------------------------
+# Dependencies via the devkitPro pkg-config wrapper (static flags).
+
+find_program(SWITCH_PKG_CONFIG NAMES aarch64-none-elf-pkg-config
+    HINTS ${PORTLIBS}/bin NO_CMAKE_FIND_ROOT_PATH)
+if(NOT SWITCH_PKG_CONFIG)
+    message(FATAL_ERROR "aarch64-none-elf-pkg-config not found (install switch-pkg-config).")
+endif()
+
+set(RENPY_PKGS
+    python-3.14-embed
+    sdl2
+    SDL2_image
+    freetype2
+    harfbuzz
+    fribidi
+    libavformat
+    libavcodec
+    libavutil
+    libswresample
+    libswscale
+    libpng
+    libjpeg
+    libwebp
+    zlib
+    egl
+    glesv2
+    glapi
+    libdrm_nouveau
 )
 
-target_link_libraries(${PROJECT_NAME}
-    ${DEVKITPRO}/portlibs/switch/lib/librenpy-switch-modules.a
-    ${PYTHON_STATIC_LIBS}
+execute_process(
+    COMMAND ${SWITCH_PKG_CONFIG} --cflags ${RENPY_PKGS}
+    OUTPUT_VARIABLE PKG_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE PKG_CFLAGS_RESULT)
+execute_process(
+    COMMAND ${SWITCH_PKG_CONFIG} --static --libs ${RENPY_PKGS}
+    OUTPUT_VARIABLE PKG_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE PKG_LIBS_RESULT)
+
+if(NOT PKG_CFLAGS_RESULT EQUAL 0 OR NOT PKG_LIBS_RESULT EQUAL 0)
+    # Report which package is missing.
+    foreach(pkg ${RENPY_PKGS})
+        execute_process(COMMAND ${SWITCH_PKG_CONFIG} --exists ${pkg} RESULT_VARIABLE r)
+        if(NOT r EQUAL 0)
+            message(SEND_ERROR "pkg-config: '${pkg}' not found for the Switch.")
+        endif()
+    endforeach()
+    message(FATAL_ERROR "Missing Switch portlibs (see above).")
+endif()
+
+separate_arguments(PKG_CFLAGS_LIST UNIX_COMMAND "${PKG_CFLAGS}")
+separate_arguments(PKG_LIBS_LIST UNIX_COMMAND "${PKG_LIBS}")
+
+message(STATUS "Ren'Py sources: ${RENPY_SOURCE_DIR}")
+message(STATUS "pkg-config libs: ${PKG_LIBS}")
+
+# ---------------------------------------------------------------------------
+
+add_executable(renpy-switch source/main.c ${RENPY_MODULE_SOURCES})
+
+target_include_directories(renpy-switch PRIVATE
+    ${RENPY_GEN_OUT}
+    ${RENPY_SOURCE_DIR}/src
+    ${RENPY_SOURCE_DIR}/src/pygame
+    ${RENPY_GEN_DIR}
+    ${PORTLIBS}/include
+    ${PORTLIBS}/include/SDL2
+)
+
+target_compile_options(renpy-switch PRIVATE
+    ${PKG_CFLAGS_LIST}
+    $<$<COMPILE_LANGUAGE:C>:-std=gnu11>
+    -O2
+    -ffunction-sections
+    -fno-strict-aliasing
+    -Wno-unused-function
+    -Wno-unused-variable
+    -Wno-incompatible-pointer-types
+    -Wno-int-conversion
+    -Wno-deprecated-declarations
+)
+
+target_compile_definitions(renpy-switch PRIVATE
+    __SWITCH__
+    RENPY_SWITCH_STACK_SIZE=33554432
+)
+
+target_link_options(renpy-switch PRIVATE
+    -Wl,-z,notext
+    -Wl,-u,__stacksize__
+    -Wl,--gc-sections
+)
+
+target_link_libraries(renpy-switch PRIVATE
+    -Wl,--start-group
+    ${PKG_LIBS_LIST}
+    stdc++
+    nx
     m
-    PkgConfig::EGL
-    PkgConfig::FREETYPE2
-    PkgConfig::GLAPI
-    PkgConfig::GLESV2
-    PkgConfig::LIBAVCODEC
-    PkgConfig::LIBAVFILTER
-    PkgConfig::LIBAVFORMAT
-    PkgConfig::LIBAVUTIL
-    PkgConfig::LIBDRM_NOUVEAU
-    PkgConfig::LIBSWRESAMPLE
-    PkgConfig::LIBSWSCALE
-    PkgConfig::SDL2
-    PkgConfig::SDL2_GFX
-    PkgConfig::SDL2_IMAGE
-    PkgConfig::SDL2_MIXER
-    PkgConfig::SDL2_TTF
-    PkgConfig::ZLIB
+    -Wl,--end-group
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${INCLUDES})
-target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_FLAGS}>)
-target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELEASE>:${OPTIMIZATION_FLAGS}>)
-target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELWITHDEBINFO>:${OPTIMIZATION_FLAGS}>)
-set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-
-add_custom_target(${PROJECT_NAME}.nso ALL
+# ELF -> NSO (for an ExeFS / installable build) next to the ELF.
+add_custom_command(TARGET renpy-switch POST_BUILD
     COMMAND ${DEVKITPRO}/tools/bin/elf2nso
-        ${PROJECT_NAME}
-        ${PROJECT_NAME}.nso
-    DEPENDS ${PROJECT_NAME}
-)
+        $<TARGET_FILE:renpy-switch>
+        $<TARGET_FILE_DIR:renpy-switch>/renpy-switch.nso
+    COMMENT "Creating renpy-switch.nso")

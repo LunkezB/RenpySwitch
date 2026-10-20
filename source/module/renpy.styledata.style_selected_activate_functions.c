@@ -1,1 +1,0 @@
-/home/jvrcruz/RenpySwitch/renpy-source/module/gen3-static/renpy.styledata.style_selected_activate_functions.c

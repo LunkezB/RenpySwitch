@@ -1,1 +1,0 @@
-/home/jvrcruz/RenpySwitch/pygame_sdl2-source/src/SDL_gfxPrimitives_font.h

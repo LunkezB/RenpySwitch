@@ -1,1 +1,0 @@
-/home/jvrcruz/RenpySwitch/renpy-source/module/glcompat.h
