@@ -87,15 +87,23 @@ if [ -f "$DEVKITPRO/cmake/Switch.cmake" ] && ! grep -q 'LINKER_FLAGS_INIT "-fPIC
 fi
 
 # ─── NXPython: CPython 3.14 for the Switch ───────────────────────────────────
+# Extra patches on top of NXPython live in switch/nxpython/ (applied after
+# NXPython's own patch). A stamp file records which set was built.
 PORTLIBS="$DEVKITPRO/portlibs/switch"
-if [ -f "$PORTLIBS/lib/libpython3.14.a" ] && [ -d "$PORTLIBS/share/python-switch/romfs/python/lib/python3.14" ]; then
+EXTRA_PATCH_ID="$(cat "$SCRIPT_DIR"/switch/nxpython/*.patch 2>/dev/null | sha256sum | cut -c1-16)"
+STAMP="$PORTLIBS/share/python-switch/renpyswitch-patches.txt"
+if [ -f "$PORTLIBS/lib/libpython3.14.a" ] && [ -d "$PORTLIBS/share/python-switch/romfs/python/lib/python3.14" ] \
+        && [ "$(cat "$STAMP" 2>/dev/null)" = "$NXPYTHON_REV-$EXTRA_PATCH_ID" ]; then
     echo ">>> [cache] NXPython already installed in portlibs."
 else
     echo ">>> Building NXPython (CPython 3.14 for Switch)..."
     rm -rf /tmp/NXPython
     git clone "$NXPYTHON_REPO" /tmp/NXPython
     git -C /tmp/NXPython checkout "$NXPYTHON_REV"
+    cp "$SCRIPT_DIR"/switch/nxpython/*.patch /tmp/NXPython/patches/
     (cd /tmp/NXPython && CPYTHON_REF="$CPYTHON_REF" bash build.sh -j "$(nproc)")
+    mkdir -p "$(dirname "$STAMP")"
+    echo "$NXPYTHON_REV-$EXTRA_PATCH_ID" > "$STAMP"
 fi
 
 # ─── Ren'Py source + SDK ─────────────────────────────────────────────────────

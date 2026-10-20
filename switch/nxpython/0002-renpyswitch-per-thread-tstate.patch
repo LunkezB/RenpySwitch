@@ -1,0 +1,63 @@
+From: RenpySwitch
+Subject: [PATCH] Per-thread current tstate on the Switch (libnx TLS slot)
+
+diff --git a/Python/pystate.c b/Python/pystate.c
+index fa86e69..35f15f0 100644
+--- a/Python/pystate.c
++++ b/Python/pystate.c
+@@ -71,14 +71,33 @@ to avoid the expense of doing their own locking).
+ _Py_thread_local PyThreadState *_Py_tss_tstate = NULL;
+ #endif
+ #ifdef __SWITCH__
+-static PyThreadState *_Py_switch_tstate = NULL;
++/* Per-thread current tstate through a libnx TLS slot. (A plain global here
++   makes every thread share one "current" tstate, which corrupts the
++   interpreter as soon as a second Python thread starts.) */
++#include <switch/types.h>
++#include <switch/kernel/thread.h>
++static s32 _Py_switch_tstate_slot = -1;
++
++static inline s32
++_Py_switch_tstate_key(void)
++{
++    if (_Py_switch_tstate_slot < 0) {
++        /* First call happens during interpreter startup, before any other
++           Python thread exists. */
++        _Py_switch_tstate_slot = threadTlsAlloc(NULL);
++    }
++    return _Py_switch_tstate_slot;
++}
+ #endif
+ 
+ static inline PyThreadState *
+ current_fast_get(void)
+ {
+ #ifdef __SWITCH__
+-    return _Py_switch_tstate;
++    if (_Py_switch_tstate_slot < 0) {
++        return NULL;
++    }
++    return (PyThreadState *)threadTlsGet(_Py_switch_tstate_slot);
+ #elif defined(HAVE_THREAD_LOCAL)
+     return _Py_tss_tstate;
+ #else
+@@ -92,7 +111,7 @@ current_fast_set(_PyRuntimeState *Py_UNUSED(runtime), PyThreadState *tstate)
+ {
+     assert(tstate != NULL);
+ #ifdef __SWITCH__
+-    _Py_switch_tstate = tstate;
++    threadTlsSet(_Py_switch_tstate_key(), tstate);
+ #elif defined(HAVE_THREAD_LOCAL)
+     _Py_tss_tstate = tstate;
+ #else
+@@ -105,7 +124,9 @@ static inline void
+ current_fast_clear(_PyRuntimeState *Py_UNUSED(runtime))
+ {
+ #ifdef __SWITCH__
+-    _Py_switch_tstate = NULL;
++    if (_Py_switch_tstate_slot >= 0) {
++        threadTlsSet(_Py_switch_tstate_slot, NULL);
++    }
+ #elif defined(HAVE_THREAD_LOCAL)
+     _Py_tss_tstate = NULL;
+ #else

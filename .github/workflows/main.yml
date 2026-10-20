@@ -51,7 +51,7 @@ jobs:
             /opt/devkitpro/portlibs/switch/lib/pkgconfig/python3-embed.pc
             /opt/devkitpro/portlibs/switch/share/python-switch
             /tmp/NXPython/build/cpython/build/nx-portlibs/build-python
-          key: nxpython-86cde18-1b1c61a9-v1
+          key: nxpython-86cde18-1b1c61a9-${{ hashFiles('switch/nxpython/*.patch') }}
 
       - name: Setup (portlibs, NXPython, Ren'Py sources)
         run: |
