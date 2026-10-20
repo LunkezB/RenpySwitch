@@ -46,6 +46,23 @@ BLOCKED = {
 }
 
 
+# os/posix functions NXPython's configure disables (config.site-aarch64-none-elf:
+# ac_cv_func_*=no), removed here so code that needs them fails like on the
+# console.
+NX_MISSING_OS = """
+chown chroot ctermid fchmod fchown fchdir fdatasync fstatvfs fork forkpty
+getegid geteuid getgid getgrouplist getgroups getlogin getpgid getpgrp getppid
+getpriority getresgid getresuid getsid getuid kill killpg lchown lockf
+login_tty mkfifo mknod nice openpty pipe pipe2 posix_fallocate posix_fadvise
+pread preadv pwrite pwritev readlink sched_get_priority_max
+sched_get_priority_min sched_rr_get_interval sched_setaffinity sched_getaffinity
+sched_setparam sched_setscheduler setegid seteuid setgid setgroups setpgid
+setpgrp setpriority setregid setresgid setresuid setreuid setsid setuid
+spawnv spawnve spawnvp spawnvpe statvfs symlink tcgetpgrp tcsetpgrp truncate
+wait wait3 wait4 waitpid waitid posix_spawn posix_spawnp register_at_fork
+""".split()
+
+
 class Blocker(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         top = fullname.split(".")[0]
@@ -63,6 +80,13 @@ for name in list(sys.modules):
 
 sys.meta_path.insert(0, Blocker())
 
+import posix  # noqa: E402
+
+for _name in NX_MISSING_OS:
+    for _mod in (os, posix):
+        if hasattr(_mod, _name):
+            delattr(_mod, _name)
+
 # Like main.c: Ren'Py base, then stdlib, then romfs:/python/site.
 sys.path.insert(0, SITE)
 sys.path.insert(0, renpy_base)
@@ -73,6 +97,9 @@ os.environ["RENPY_SWITCH_SAVE"] = save_dir
 os.makedirs(save_dir, exist_ok=True)
 
 sys.platform = "nx"
+
+# Like main.c: stand-ins for missing process functions.
+import _switch_compat  # noqa: E402,F401
 
 sys.argv = [os.path.join(renpy_base, "renpy.py")] + extra_args
 

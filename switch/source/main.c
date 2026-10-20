@@ -349,6 +349,11 @@ static void *python_thread(void *arg)
     check_status(status, "Py_InitializeFromConfig");
     boot_log("Python initialized");
 
+    /* Stand-ins for POSIX functions NXPython lacks (switch/site). */
+    if (PyRun_SimpleString("import _switch_compat") != 0) {
+        boot_log("import _switch_compat failed");
+    }
+
     /* stdout/stderr: to nxlink when connected, otherwise to a log file. */
     if (!g_nxlink) {
         PyRun_SimpleString(
