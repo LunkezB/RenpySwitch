@@ -526,6 +526,22 @@ def rewrite_nro(src, dst, title, author, version, icon_jpeg):
 # ---------------------------------------------------------------------------
 
 
+def make_nro(args, apk_icon, sd_dir, name):
+    icon_jpeg = None
+    if args.icon:
+        with open(args.icon, "rb") as f:
+            icon_jpeg = f.read()
+    elif apk_icon:
+        icon_jpeg = make_icon_jpeg(apk_icon)
+        if icon_jpeg is None:
+            say("(Pillow not installed: keeping the default icon. pip install pillow)")
+
+    os.makedirs(sd_dir, exist_ok=True)
+    dst = os.path.join(sd_dir, name + ".nro")
+    rewrite_nro(args.nro, dst, args.title or name, args.author, args.version, icon_jpeg)
+    say("Created {}".format(dst))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Convert a Ren'Py Android APK for the Switch homebrew build.")
     ap.add_argument("apk", help="the Ren'Py .apk, or an already converted \"game\" folder (with --pack)")
@@ -565,9 +581,20 @@ def main():
     sd_dir = os.path.join(out, "switch", name)
     out_game = os.path.join(sd_dir, "game")
 
-    if os.path.exists(out_game):
-        if not args.force:
+    if os.path.exists(out_game) and not args.force:
+        # The game was converted before: only (re)make the .nro.
+        if not args.nro:
             raise SystemExit("ERROR: {} already exists (use --force to replace it).".format(out_game))
+        say("The game folder already exists, keeping it as is:")
+        say("  {}".format(out_game))
+        say("Only updating the .nro (use --force to convert the game again).")
+        with zipfile.ZipFile(apk_path) as apk:
+            apk_icon = find_apk_icon(apk)
+        make_nro(args, apk_icon, sd_dir, name)
+        say("Copy {} to sdmc:/switch/{}/ (replace the old one).".format(name + ".nro", name))
+        return
+
+    if os.path.exists(out_game):
         shutil.rmtree(out_game)
 
     os.makedirs(out_game, exist_ok=True)
@@ -609,18 +636,7 @@ def main():
         pack_game(out_game, args.pack_size * 1024 * 1024)
 
     if args.nro:
-        icon_jpeg = None
-        if args.icon:
-            with open(args.icon, "rb") as f:
-                icon_jpeg = f.read()
-        elif apk_icon:
-            icon_jpeg = make_icon_jpeg(apk_icon)
-            if icon_jpeg is None:
-                say("(Pillow not installed: keeping the default icon. pip install pillow)")
-
-        dst = os.path.join(sd_dir, name + ".nro")
-        rewrite_nro(args.nro, dst, args.title or name, args.author, args.version, icon_jpeg)
-        say("Created {}".format(dst))
+        make_nro(args, apk_icon, sd_dir, name)
 
     say("")
     say("Done. Copy the folder")
