@@ -550,3 +550,47 @@ index 96ebc64..4b534ba 100644
  #define USE_POSIX_MEMALIGN
  #endif
  
+diff --git a/src/libhydrogen/impl/random.h b/src/libhydrogen/impl/random.h
+index 2593d31..d94be6a 100644
+--- a/src/libhydrogen/impl/random.h
++++ b/src/libhydrogen/impl/random.h
+@@ -19,6 +19,8 @@ static TLS struct {
+ # include "random/wasi.h"
+ #elif defined(__linux__) && defined(__KERNEL__)
+ # include "random/linux_kernel.h"
++#elif defined(__SWITCH__)
++# include "random/switch.h"
+ #elif defined(__unix__)
+ # include "random/unix.h"
+ #elif defined(TARGET_LIKE_MBED)
+diff --git a/src/libhydrogen/impl/random/switch.h b/src/libhydrogen/impl/random/switch.h
+new file mode 100644
+index 0000000..42bf4e7
+--- /dev/null
++++ b/src/libhydrogen/impl/random/switch.h
+@@ -0,0 +1,13 @@
++/* Nintendo Switch (libnx): kernel entropy via randomGet(). */
++#include <stddef.h>
++
++void randomGet(void *buf, size_t len);
++
++static int
++hydro_random_init(void)
++{
++    randomGet(hydro_random_context.state, sizeof hydro_random_context.state);
++    hydro_random_context.counter = ~LOAD64_LE(hydro_random_context.state);
++
++    return 0;
++}
+diff --git a/src/pygame/write_jpeg.c b/src/pygame/write_jpeg.c
+index dd50d63..147fb61 100644
+--- a/src/pygame/write_jpeg.c
++++ b/src/pygame/write_jpeg.c
+@@ -19,6 +19,7 @@
+  */
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <SDL.h>
+ #include <jpeglib.h>
+ 
