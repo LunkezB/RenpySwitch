@@ -38,6 +38,21 @@ jobs:
           path: downloads
           key: renpy-downloads-8.5.3
 
+      - name: Cache NXPython (CPython 3.14 for Switch)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/devkitpro/portlibs/switch/lib/libpython3.14.a
+            /opt/devkitpro/portlibs/switch/lib/python3.14
+            /opt/devkitpro/portlibs/switch/include/python3.14
+            /opt/devkitpro/portlibs/switch/lib/pkgconfig/python-3.14.pc
+            /opt/devkitpro/portlibs/switch/lib/pkgconfig/python-3.14-embed.pc
+            /opt/devkitpro/portlibs/switch/lib/pkgconfig/python3.pc
+            /opt/devkitpro/portlibs/switch/lib/pkgconfig/python3-embed.pc
+            /opt/devkitpro/portlibs/switch/share/python-switch
+            /tmp/NXPython/build/cpython/build/nx-portlibs/build-python
+          key: nxpython-86cde18-1b1c61a9-v1
+
       - name: Setup (portlibs, NXPython, Ren'Py sources)
         run: |
           set -o pipefail

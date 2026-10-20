@@ -58,17 +58,29 @@ pip install --upgrade pip
 pip install "Cython==$CYTHON_VER" setuptools
 
 # ─── devkitPro portlibs (before NXPython: it links against several) ──────────
-echo ">>> Installing devkitPro Switch portlibs..."
-dkp-pacman -Sy --noconfirm
-dkp-pacman -S --noconfirm --needed \
-    switch-dev switch-pkg-config switch-cmake \
-    switch-mesa switch-libdrm_nouveau switch-glad \
-    switch-sdl2 switch-sdl2_image \
-    switch-freetype switch-harfbuzz switch-libfribidi \
-    switch-ffmpeg switch-dav1d \
-    switch-libpng switch-libjpeg-turbo switch-libwebp \
-    switch-zlib switch-bzip2 switch-liblzma switch-libzstd \
+# The devkitpro/devkita64 image already ships switch-dev + switch-portlibs, and
+# pkg.devkitpro.org may refuse CI runners, so only install what is missing.
+NEEDED_PKGS=(
+    switch-pkg-config switch-cmake libnx switch-tools
+    switch-mesa switch-libdrm_nouveau switch-glad
+    switch-sdl2 switch-sdl2_image
+    switch-freetype switch-harfbuzz switch-libfribidi
+    switch-ffmpeg switch-dav1d
+    switch-libpng switch-libjpeg-turbo switch-libwebp
+    switch-zlib switch-bzip2 switch-liblzma switch-libzstd
     switch-mbedtls switch-curl
+)
+MISSING_PKGS=()
+for p in "${NEEDED_PKGS[@]}"; do
+    dkp-pacman -Q "$p" >/dev/null 2>&1 || MISSING_PKGS+=("$p")
+done
+if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+    echo ">>> Installing missing devkitPro packages: ${MISSING_PKGS[*]}"
+    dkp-pacman -Sy --noconfirm
+    dkp-pacman -S --noconfirm --needed "${MISSING_PKGS[@]}"
+else
+    echo ">>> All devkitPro packages already installed."
+fi
 
 if [ -f "$DEVKITPRO/cmake/Switch.cmake" ] && ! grep -q 'LINKER_FLAGS_INIT "-fPIC' "$DEVKITPRO/cmake/Switch.cmake"; then
     sed -i.bak 's/set(CMAKE_EXE_LINKER_FLAGS_INIT "/set(CMAKE_EXE_LINKER_FLAGS_INIT "-fPIC /' "$DEVKITPRO/cmake/Switch.cmake"
