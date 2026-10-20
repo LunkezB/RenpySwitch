@@ -18,3 +18,7 @@ downloads/
 *.zip
 *.nsp
 *.nro
+
+# Python bytecode
+__pycache__/
+*.pyc
