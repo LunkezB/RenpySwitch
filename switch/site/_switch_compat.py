@@ -13,6 +13,7 @@ alone, so code that looks before it leaps still sees the truth.
 
 import errno
 import os
+import sys
 
 
 def _no_child(*args, **kwargs):
@@ -46,3 +47,42 @@ for _name, _value in _STUBS.items():
         setattr(os, _name, _value)
 
 del _name, _value
+
+
+# ---------------------------------------------------------------------------
+# Startup trace: every imported module and every script file opened, written
+# straight to <save>/logs/trace.txt (no buffering), so a native crash during
+# startup still shows how far loading got. Stops after a few thousand lines.
+
+def _start_trace():
+    save = os.environ.get("RENPY_SWITCH_SAVE")
+    if not save or os.environ.get("RENPY_SWITCH_TRACE", "1") == "0":
+        return
+
+    try:
+        os.makedirs(save + "logs", exist_ok=True)
+        fd = os.open(save + "logs/trace.txt", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
+    except OSError:
+        return
+
+    state = {"left": 4000}
+
+    def hook(event, args):
+        if state["left"] <= 0:
+            return
+        try:
+            if event == "import":
+                line = "import " + str(args[0])
+            elif event == "open" and isinstance(args[0], str) and args[0].endswith((".rpyc", ".rpy", ".rpa", ".rpyb")):
+                line = "open " + args[0]
+            else:
+                return
+            state["left"] -= 1
+            os.write(fd, (line + "\n").encode("utf-8", "replace"))
+        except Exception:
+            pass
+
+    sys.addaudithook(hook)
+
+
+_start_trace()

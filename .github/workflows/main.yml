@@ -98,7 +98,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git)
-          mkdir -p /tmp/cilog
+          URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf /tmp/cilog
+          git clone -q --depth 1 -b ci-logs "$URL" /tmp/cilog 2>/dev/null || (mkdir -p /tmp/cilog && git -C /tmp/cilog init -q -b ci-logs)
           cp setup.log build.log /tmp/cilog/ 2>/dev/null || true
           [ -d build-switch/cmake/CMakeFiles ] && cp build-switch/cmake/CMakeFiles/CMake*.log /tmp/cilog/ 2>/dev/null || true
           echo "${GITHUB_RUN_ID} ${GITHUB_SHA} ${{ job.status }}" > /tmp/cilog/RUN.txt
@@ -106,8 +108,14 @@ jobs:
             (cd raw && ls -la && du -sh romfs romfs/* romfs/*/* 2>/dev/null) > /tmp/cilog/raw-summary.txt
             (cd raw/romfs && find . -type f | sort) > /tmp/cilog/romfs-files.txt
           fi
+          # Symbol table of this build, to symbolize crash reports (offsets are
+          # printed relative to main()).
+          if [ -f raw/renpy-switch.elf ]; then
+            mkdir -p /tmp/cilog/symbols
+            /opt/devkitpro/devkitA64/bin/aarch64-none-elf-nm -n -C raw/renpy-switch.elf \
+              | grep -E ' [TtWw] ' | gzip -9 > "/tmp/cilog/symbols/${GITHUB_SHA:0:7}.txt.gz"
+          fi
           cd /tmp/cilog
-          git init -q -b ci-logs
           git add -A
-          git -c user.name=ci -c user.email=ci@localhost commit -q -m "Logs of run ${GITHUB_RUN_ID}"
-          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
+          git -c user.name=ci -c user.email=ci@localhost commit -q -m "Logs of run ${GITHUB_RUN_ID} (${GITHUB_SHA:0:7})" || true
+          git push -q "$URL" HEAD:ci-logs

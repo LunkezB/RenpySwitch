@@ -26,8 +26,10 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -271,10 +273,71 @@ void userAppExit(void)
     romfsExit();
 }
 
-/* No text console: Ren'Py owns the screen through SDL/EGL. */
-ConsoleRenderer *getDefaultConsoleRenderer(void)
+/* ------------------------------------------------------------------------ */
+/* Crash reporter                                                           */
+
+/*
+ * On a CPU exception (data abort etc.) libnx calls this on a separate stack
+ * before the process dies. It appends the registers, a frame-pointer
+ * backtrace and the Python stacks of all threads to the boot log. Addresses
+ * are also printed relative to main() so they can be symbolized with the
+ * symbol table the CI publishes (symbols.txt.gz on the ci-logs branch).
+ * Only write()-level calls here: the heap may be corrupted.
+ */
+alignas(16) u8 __nx_exception_stack[0x40000];
+u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
+u32 __nx_exception_ignoredebug = 1;
+
+extern const char *_Py_DumpTracebackThreads(int fd, PyInterpreterState *interp, PyThreadState *current_tstate);
+int main(int argc, char *argv[]);
+
+static void crash_write(int fd, const char *fmt, ...)
 {
-    return NULL;
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        write(fd, buf, n < (int)sizeof(buf) ? n : (int)sizeof(buf) - 1);
+    }
+}
+
+void __libnx_exception_handler(ThreadExceptionDump *ctx)
+{
+    int fd = open(BOOT_LOG, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if (fd < 0) {
+        return;
+    }
+
+    u64 base = (u64)(uintptr_t)&main;
+
+    crash_write(fd, "\n=== CRASH: error_desc 0x%x ===\n", ctx->error_desc);
+    crash_write(fd, "main @ 0x%lx (offsets below are relative to main)\n", base);
+    crash_write(fd, "pc  0x%lx  main%+ld\n", ctx->pc.x, (long)(ctx->pc.x - base));
+    crash_write(fd, "lr  0x%lx  main%+ld\n", ctx->lr.x, (long)(ctx->lr.x - base));
+    crash_write(fd, "sp  0x%lx  fp 0x%lx  far 0x%lx  esr 0x%x\n", ctx->sp.x, ctx->fp.x, ctx->far.x, ctx->esr);
+    for (int i = 0; i < 29; i++) {
+        crash_write(fd, "x%-2d 0x%016lx%s", i, ctx->cpu_gprs[i].x, (i % 3 == 2) ? "\n" : "  ");
+    }
+    crash_write(fd, "\nbacktrace:\n");
+
+    u64 fp = ctx->fp.x;
+    u64 sp = ctx->sp.x;
+    for (int i = 0; i < 48 && fp && !(fp & 0xF) && fp >= sp && fp - sp < 0x4000000; i++) {
+        u64 next = ((u64 *)fp)[0];
+        u64 ret = ((u64 *)fp)[1];
+        crash_write(fd, "  #%02d 0x%lx  main%+ld\n", i, ret, (long)(ret - base));
+        if (next <= fp) {
+            break;
+        }
+        fp = next;
+    }
+
+    crash_write(fd, "\npython:\n");
+    _Py_DumpTracebackThreads(fd, NULL, NULL);
+    crash_write(fd, "=== end ===\n");
+    close(fd);
 }
 
 static AppletHookCookie g_applet_hook_cookie;
@@ -402,6 +465,32 @@ int main(int argc, char *argv[])
     boot_log("main: argc=%d argv0=%s nso=%d", argc, argc > 0 && argv[0] ? argv[0] : "(none)", (int)envIsNso());
 
     setenv("MESA_NO_ERROR", "1", 1);
+
+    AppletType applet_type = appletGetAppletType();
+    boot_log("applet type: %d", (int)applet_type);
+
+    if (applet_type != AppletType_Application && applet_type != AppletType_SystemApplication) {
+        /* Started from the album: ~440 MB of memory, not enough for Ren'Py. */
+        consoleInit(NULL);
+        padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+        PadState pad;
+        padInitializeDefault(&pad);
+        printf("\n\n  Ren'Py needs the full memory mode.\n\n"
+               "  Start the Homebrew Menu by HOLDING R while launching\n"
+               "  any installed game, then start this program again.\n\n"
+               "  (Opened from the Album it only gets ~440 MB.)\n\n"
+               "  Press + to exit.\n");
+        consoleUpdate(NULL);
+        while (appletMainLoop()) {
+            padUpdate(&pad);
+            if (padGetButtonsDown(&pad) & HidNpadButton_Plus) {
+                break;
+            }
+            svcSleepThread(16000000ULL);
+        }
+        consoleExit(NULL);
+        return 0;
+    }
 
     appletLockExit();
     appletHook(&g_applet_hook_cookie, on_applet_hook, NULL);

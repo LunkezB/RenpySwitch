@@ -105,6 +105,7 @@ target_compile_options(renpy-switch PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-std=gnu11>
     -O2
     -ffunction-sections
+    -fno-omit-frame-pointer
     -fno-strict-aliasing
     -Wno-unused-function
     -Wno-unused-variable

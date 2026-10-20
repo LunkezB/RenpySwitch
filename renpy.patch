@@ -472,6 +472,20 @@ index 3bbdb7d..3783384 100644
      dn = os.path.dirname(fn)
  
      try:
+diff --git a/renpy/log.py b/renpy/log.py
+index 27fee90..d46d0ca 100644
+--- a/renpy/log.py
++++ b/renpy/log.py
+@@ -179,7 +179,8 @@ class LogFile(object):
+ 
+             self.file.write(s)  # type: ignore
+ 
+-            if self.flush:
++            # Switch: flush every line, so a crash does not lose the log.
++            if self.flush or renpy.switch:
+                 try:
+                     self.file.flush()  # type: ignore
+                 except Exception:
 diff --git a/renpy/main.py b/renpy/main.py
 index cf72003..81adaa7 100644
 --- a/renpy/main.py
