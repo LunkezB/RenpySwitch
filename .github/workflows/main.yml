@@ -12,12 +12,18 @@ on:
         description: "Author shown in the Homebrew Menu"
         default: "Ren'Py Switch"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-24.04
     container: devkitpro/devkita64:latest
     timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
@@ -33,13 +39,17 @@ jobs:
           key: renpy-downloads-8.5.3
 
       - name: Setup (portlibs, NXPython, Ren'Py sources)
-        run: bash setup.bash
+        run: |
+          set -o pipefail
+          bash setup.bash 2>&1 | tee setup.log
 
       - name: Build
         env:
           APP_NAME: ${{ github.event.inputs.app_name || 'Ren''Py' }}
           APP_AUTHOR: ${{ github.event.inputs.app_author || 'Ren''Py Switch' }}
-        run: bash build.bash
+        run: |
+          set -o pipefail
+          bash build.bash 2>&1 | tee build.log
 
       - name: Upload launcher (.nro)
         uses: actions/upload-artifact@v4
@@ -55,3 +65,30 @@ jobs:
             raw/renpy-switch.elf
             raw/exefs/main
             raw/romfs
+
+      # Logs on GitHub's storage are not always reachable for debugging, so on
+      # failure the logs are also pushed to the "ci-logs" branch and the first
+      # errors are shown as annotations.
+      - name: Report errors
+        if: failure()
+        run: |
+          grep -h -n -E "error|Error|undefined reference|No such file|Traceback|not found" setup.log build.log 2>/dev/null \
+            | grep -v -E "^[0-9]+:(  |\+)?-W|Werror=" | head -10 | while IFS= read -r l; do
+              l="${l//'%'/'%25'}"; echo "::error::${l:0:900}"
+            done || true
+
+      - name: Publish logs to the ci-logs branch
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git)
+          mkdir -p /tmp/cilog
+          cp setup.log build.log /tmp/cilog/ 2>/dev/null || true
+          [ -d build-switch/cmake/CMakeFiles ] && cp build-switch/cmake/CMakeFiles/CMake*.log /tmp/cilog/ 2>/dev/null || true
+          echo "${GITHUB_RUN_ID} ${GITHUB_SHA}" > /tmp/cilog/RUN.txt
+          cd /tmp/cilog
+          git init -q -b ci-logs
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -q -m "Logs of run ${GITHUB_RUN_ID}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
