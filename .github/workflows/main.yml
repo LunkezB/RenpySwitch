@@ -88,14 +88,31 @@ jobs:
           name: renpy-switch
           path: dist/
 
-      # A tag v* also publishes the files as a GitHub Release: unlike
-      # artifacts, those download without a GitHub login and do not expire,
-      # so game build scripts can fetch a pinned engine version.
-      - name: Publish release (tags v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      # A new version in VERSION (on master) publishes the files as a GitHub
+      # Release with that tag: unlike artifacts, releases download without a
+      # GitHub login and do not expire, so game build scripts can pin one.
+      # An existing release is never changed; bump VERSION for a new one.
+      - name: Check the release version
+        id: release
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$(tr -d ' \r\n' < VERSION)"
+          command -v curl >/dev/null || (apt-get update -qq && apt-get install -y -qq curl)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" \
+                 "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}")
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "new=$([ "$code" = 404 ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          echo "release ${tag}: HTTP ${code}"
+
+      - name: Publish release
+        if: steps.release.outputs.new == 'yes'
         uses: softprops/action-gh-release@v2
         with:
-          name: Ren'Py 8.5.3 for Switch ${{ github.ref_name }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Ren'Py 8.5.3 for Switch ${{ steps.release.outputs.tag }}
           files: dist/*
           fail_on_unmatched_files: true
           body: |

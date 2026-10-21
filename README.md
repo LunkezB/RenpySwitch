@@ -120,9 +120,10 @@ bash setup.bash
 bash build.bash
 ```
 
-Pushing a tag `v*` (e.g. `v8.5.3-switch.2`) also publishes the files as a
-GitHub Release, which downloads without a login (build scripts of game ports
-pin a release tag).
+A new version in `VERSION` (e.g. `v8.5.3-switch.2`) pushed to master also
+publishes the files as a GitHub Release with that tag, which downloads
+without a login (build scripts of game ports pin a release tag). Existing
+releases are never changed.
 
 Output in `raw/`: `renpy-switch.nro`, `renpy-switch.elf`, `exefs/main` (NSO),
 `exefs/main.npdm` and `romfs/`. `scripts/nsp_tools.bash` then builds
