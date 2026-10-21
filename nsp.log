@@ -3,20 +3,23 @@
 >>> hacbrewpack.exe (Windows, mingw-w64, static)
 >>> hactool (Linux, for the check)
 >>> Python with Pillow (icons)
+>>> Check: apk2switch --pack
++ /__w/RenpySwitch/RenpySwitch/tools-build/venv/bin/python /__w/RenpySwitch/RenpySwitch/scripts/../tools/apk2switch.py tools-build/packtest/game --pack --pack-size 1
+OK: --pack wrote 1 archive(s) that read back correctly
 >>> Check: engine code taken from the .nro == elf2nso output
 OK: NSO from the .nro matches elf2nso (39649280 bytes of code)
 >>> Check: NSP made by apk2switch.py (test game, throwaway keys)
 + /__w/RenpySwitch/RenpySwitch/tools-build/venv/bin/python /__w/RenpySwitch/RenpySwitch/scripts/../tools/apk2switch.py tools-build/nsptest/out/switch/testgame/game --nro raw/renpy-switch.nro --nsp --title Тест — テスト --version 1.2 --icon tools-build/nsptest/icon.png --keys tools-build/nsptest/test.keys --hacbrewpack tools-build/hbp-linux/hacbrewpack
 + tools-build/hactool/hactool -k tools-build/nsptest/test.keys -t pfs0 --outdir=tools-build/nsptest/unpack tools-build/nsptest/out/testgame.nsp
-+ tools-build/hactool/hactool -k tools-build/nsptest/test.keys --exefsdir=tools-build/nsptest/nca-23d36130/exefs --romfsdir=tools-build/nsptest/nca-23d36130/romfs --section0dir=tools-build/nsptest/nca-23d36130/s0 tools-build/nsptest/unpack/23d361301dd78f270da03289b1de42d9.nca
 + tools-build/hactool/hactool -k tools-build/nsptest/test.keys --exefsdir=tools-build/nsptest/nca-77b53fd0/exefs --romfsdir=tools-build/nsptest/nca-77b53fd0/romfs --section0dir=tools-build/nsptest/nca-77b53fd0/s0 tools-build/nsptest/unpack/77b53fd08a9da9551cd8324ed4a73227.nca
-+ tools-build/hactool/hactool -k tools-build/nsptest/test.keys --exefsdir=tools-build/nsptest/nca-892471b9/exefs --romfsdir=tools-build/nsptest/nca-892471b9/romfs --section0dir=tools-build/nsptest/nca-892471b9/s0 tools-build/nsptest/unpack/892471b95953ab428545406a0d044140.cnmt.nca
++ tools-build/hactool/hactool -k tools-build/nsptest/test.keys --exefsdir=tools-build/nsptest/nca-a12e3681/exefs --romfsdir=tools-build/nsptest/nca-a12e3681/romfs --section0dir=tools-build/nsptest/nca-a12e3681/s0 tools-build/nsptest/unpack/a12e3681809cd2ee27d6aa70eba5af9f.cnmt.nca
++ tools-build/hactool/hactool -k tools-build/nsptest/test.keys --exefsdir=tools-build/nsptest/nca-a13831f3/exefs --romfsdir=tools-build/nsptest/nca-a13831f3/romfs --section0dir=tools-build/nsptest/nca-a13831f3/s0 tools-build/nsptest/unpack/a13831f31a75a131896f78e38b6346d1.nca
 OK: NSP 01fb3e9e6f44a000 has the engine, the game, the title, the icons (74.0 MB)
 total 73512
-drwxr-xr-x  2 root root     4096 Oct 21 17:26 .
-drwxr-xr-x 15 1001 1001     4096 Oct 21 17:26 ..
--rw-r--r--  1 root root    55279 Oct 21 17:26 apk2switch.py
--rwxr-xr-x  1 root root   392120 Oct 21 17:26 hacbrewpack
--rwxr-xr-x  1 root root   692757 Oct 21 17:26 hacbrewpack.exe
--rw-r--r--  1 root root    18092 Oct 21 17:26 hacbrewpack-LICENSE.txt
--rw-r--r--  1 root root 74098217 Oct 21 17:26 renpy-switch.nro
+drwxr-xr-x  2 root root     4096 Oct 21 17:33 .
+drwxr-xr-x 15 1001 1001     4096 Oct 21 17:32 ..
+-rw-r--r--  1 root root    55518 Oct 21 17:33 apk2switch.py
+-rwxr-xr-x  1 root root   392120 Oct 21 17:33 hacbrewpack
+-rwxr-xr-x  1 root root   692757 Oct 21 17:33 hacbrewpack.exe
+-rw-r--r--  1 root root    18092 Oct 21 17:33 hacbrewpack-LICENSE.txt
+-rw-r--r--  1 root root 74098201 Oct 21 17:33 renpy-switch.nro
