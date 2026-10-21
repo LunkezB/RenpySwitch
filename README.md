@@ -90,6 +90,10 @@ python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --nsp
 | Left stick, D-pad | move between buttons |
 | Touch | tap = next/press, long press = menu, swipe ↑ = history, swipe ↓ = hide text box |
 
+The game's own settings win: pad bindings the game changed itself are kept,
+and the swipes are only added when the game has no gestures of its own (many
+Android ports have them).
+
 Handheld mode uses Ren'Py's `touch`/`small`/`phone` screen variants (like an
 Android phone); docked mode uses `tv`/`large`. All modes also set the
 `switch` and `mobile` variants.

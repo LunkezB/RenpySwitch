@@ -73,17 +73,36 @@ CONTROLS_RPY = r'''# Nintendo Switch controls for Ren'Py games (RenpySwitch).
 #   tap = next line / press a button, long press = game menu,
 #   swipe up = history, swipe down = hide the text box.
 #
+# The game's own settings win: a pad binding the game changed itself is left
+# alone, and so are the swipes when the game defines its own gestures (e.g.
+# Android ports with gesture support).
+#
 # Button names below are SDL's positional (Xbox-style) names. With the
 # devkitPro SDL2 mapping the physical Nintendo buttons are:
 #   A -> "b", B -> "a", X -> "y", Y -> "x", L/R -> shoulders, ZL/ZR -> triggers,
 #   Plus -> "start", Minus -> "back".
 
+# Ren'Py's defaults, before the game's own init code runs.
+init -999 python:
+
+    if getattr(renpy, "switch", False):
+        _switch_default_pad = {k: list(v) for k, v in config.pad_bindings.items()}
+        _switch_default_gestures = dict(config.gestures)
+
 init 1000 python:
 
     if getattr(renpy, "switch", False):
 
+        def _switch_game_changed(control):
+            return config.pad_bindings.get(control) != _switch_default_pad.get(control)
+
         def _switch_bind(control, *events):
-            config.pad_bindings[control] = list(events)
+            if not _switch_game_changed(control):
+                config.pad_bindings[control] = list(events)
+
+        def _switch_unbind(control):
+            if not _switch_game_changed(control):
+                config.pad_bindings.pop(control, None)
 
         # Face buttons.
         _switch_bind("pad_b_press", "dismiss", "button_select", "bar_activate", "bar_deactivate")  # A
@@ -95,30 +114,32 @@ init 1000 python:
         _switch_bind("pad_start_press", "game_menu")
         _switch_bind("pad_guide_press", "game_menu")
         _switch_bind("pad_back_press", "hide_windows")
-        config.pad_bindings.pop("repeat_pad_back_press", None)
+        _switch_unbind("repeat_pad_back_press")
 
         # Triggers: ZR skip toggle, ZL auto-forward toggle.
         _switch_bind("pad_righttrigger_pos", "switch_skip")
         _switch_bind("pad_lefttrigger_pos", "switch_auto")
-        config.pad_bindings.pop("repeat_pad_lefttrigger_pos", None)
+        _switch_unbind("repeat_pad_lefttrigger_pos")
 
         # Shoulders: quick save / quick load.
         _switch_bind("pad_leftshoulder_press", "switch_quicksave")
         _switch_bind("pad_rightshoulder_press", "switch_quickload")
-        config.pad_bindings.pop("repeat_pad_leftshoulder_press", None)
-        config.pad_bindings.pop("repeat_pad_rightshoulder_press", None)
+        _switch_unbind("repeat_pad_leftshoulder_press")
+        _switch_unbind("repeat_pad_rightshoulder_press")
 
         # Right stick vertical: rollback / rollforward (like a mouse wheel).
         # Horizontal stays on focus movement.
         for _prefix in ("", "repeat_"):
-            config.pad_bindings[_prefix + "pad_righty_neg"] = ["rollback"]
-            config.pad_bindings[_prefix + "pad_righty_pos"] = ["rollforward"]
+            _switch_bind(_prefix + "pad_righty_neg", "rollback")
+            _switch_bind(_prefix + "pad_righty_pos", "rollforward")
 
-        # Touch gestures (only active in handheld mode, "touch" variant).
-        config.gestures.update({
-            "n": "switch_history",
-            "s": "hide_windows",
-        })
+        # Touch gestures (only active in handheld mode, "touch" variant),
+        # unless the game has gestures of its own.
+        if config.gestures == _switch_default_gestures:
+            config.gestures.update({
+                "n": "switch_history",
+                "s": "hide_windows",
+            })
 
         # Actions for the custom event names used above. The underlay is
         # active everywhere, so these work in game and in menus.
