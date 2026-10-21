@@ -68,7 +68,12 @@ python apk2switch.py game.apk --nro renpy-switch.nro --name mygame --nsp
 * Install with DBI, Tinfoil, Goldleaf…; the console needs sigpatches.
 * The title id is made from `--name` (`01f…000`): a rebuilt NSP of the same
   game keeps it, so it replaces the installed one (if the installer refuses,
-  delete the old one first). `--title-id` sets another.
+  delete the old one first). `--title-id` sets another; it must end in
+  `0000`, `2000`, … `e000` (an id ending in `1000`, `3000`, … is an add-on
+  id: emulators show such a title without name and icon and crash on it).
+  Before v8.5.3-switch.3 about half of the names got such an id; those games
+  get a new id now, so delete the old installed title.
+* Emulators: the NSP also runs in Eden (yuzu-based), in its window version.
 * Saves go to `sdmc:/switch/mygame/save/`, the same folder as the `.nro`
   version, so both share saves.
 * An already converted folder works too:
@@ -102,7 +107,9 @@ Android phone); docked mode uses `tv`/`large`. All modes also set the
 
 The Switch's SDL_image 2.0.4 decodes PNG, JPEG and WebP. AVIF, JPEG XL and SVG
 images are not supported: `apk2switch.py --convert-avif` converts AVIF in
-place. Video/audio: anything FFmpeg 7.1 decodes (WebM VP8/VP9/AV1, Ogg,
+place, also AVIF data hidden under another extension (Android ports often
+ship AVIF files named `.webp`; apk2switch warns about them). It works on an
+APK and on a converted folder (loose files only, before `--pack`). Video/audio: anything FFmpeg 7.1 decodes (WebM VP8/VP9/AV1, Ogg,
 Opus, MP3...). 3D models (`GLTFModel`) and Live2D are not supported.
 
 ## Building

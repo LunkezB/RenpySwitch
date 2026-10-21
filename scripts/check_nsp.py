@@ -164,6 +164,10 @@ def check_nsp(nro_path, hbp, hactool, work):
         fail(".nro RomFS changed")
 
     tid = apk2switch.default_title_id("testgame")
+    # Bit 12 set would make it an add-on id (emulators crash on it).
+    for name in ("testgame", "subahibi", "mygame", "a", "b", "c", "d", "e", "f"):
+        if apk2switch.default_title_id(name) & 0x1FFF:
+            fail("title id for {!r} is not an application id".format(name))
 
     # Unpack the NSP and its NCAs.
     unpack = os.path.join(work, "unpack")

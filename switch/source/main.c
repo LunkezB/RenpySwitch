@@ -282,6 +282,8 @@ static int g_nxlink = 0;
 
 void userAppInit(void)
 {
+    /* Emulators start with an empty SD card (no "switch" folder). */
+    mkdir("sdmc:/switch", 0777);
     FILE *f = fopen(BOOT_LOG, "w");
     if (f) {
         fputs("renpy-switch boot log\n", f);

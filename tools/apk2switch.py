@@ -254,6 +254,11 @@ def check_game(out_game, names):
     report["rpa"] = exts.get(".rpa", 0)
 
     report["unsupported"] = [n for n in names if os.path.splitext(n)[1].lower() in UNSUPPORTED_IMAGES]
+    # AVIF data under another image name (Android ports often ship AVIF as
+    # .webp): Ren'Py loads it there, the Switch's SDL_image does not.
+    report["hidden_avif"] = [n for n in names
+                             if os.path.splitext(n)[1].lower() in IMAGE_EXTS - set(UNSUPPORTED_IMAGES)
+                             and is_avif(os.path.join(out_game, *n.split("/")))]
 
     biggest = 0
     total = 0
@@ -287,6 +292,21 @@ def print_report(r):
         say("WARNING: {} image(s) in formats the Switch build cannot decode: {}".format(
             len(r["unsupported"]), ", ".join("{} {}".format(v, k) for k, v in kinds.items())))
         say("         Run again with --convert-avif to convert AVIF images (needs Pillow >= 11.2).")
+    if r["hidden_avif"]:
+        say("")
+        say("WARNING: {} image(s) are AVIF inside another extension (e.g. {}); the Switch".format(
+            len(r["hidden_avif"]), r["hidden_avif"][0]))
+        say("         build cannot decode them. Run again with --convert-avif (needs Pillow >= 11.2).")
+
+
+def is_avif(path):
+    """True if the file holds AVIF data, whatever its name."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except OSError:
+        return False
+    return head[4:8] == b"ftyp" and head[8:12] in (b"avif", b"avis")
 
 
 def convert_avif(out_game, names):
@@ -300,7 +320,9 @@ def convert_avif(out_game, names):
         say("This Pillow has no AVIF support. Update it: pip install --upgrade pillow")
         return
 
-    todo = [n for n in names if n.lower().endswith(".avif")]
+    todo = [n for n in names if n.lower().endswith(".avif") or is_avif(os.path.join(out_game, *n.split("/")))]
+    if not todo:
+        return
     say("Converting {} AVIF images to WebP (file names stay the same) ...".format(len(todo)))
 
     for i, n in enumerate(todo, 1):
@@ -1069,10 +1091,17 @@ def make_nro(nro, dst, title, author, version, icon_jpeg):
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+# An application id has its low 13 bits clear: id + 0x800 is its update and
+# id + 0x1000 and up its add-ons. An id with bit 12 set is taken for an
+# add-on: emulators (yuzu, Eden) show it without name and icon and crash
+# when it is started.
+TITLE_ID_LOW_BITS = 0x1FFF
+
+
 def default_title_id(name):
-    """A stable title id per game: 01f + 40 bits of a hash + 000."""
+    """A stable title id per game: 01f + 39 bits of a hash, low 13 bits clear."""
     h = hashlib.sha1(("renpy-switch:" + name.lower()).encode("utf-8")).hexdigest()
-    return int("01f" + h[:10] + "000", 16)
+    return int("01f" + h[:10] + "000", 16) & ~TITLE_ID_LOW_BITS
 
 
 def find_file(explicit, candidates, what):
@@ -1131,8 +1160,9 @@ def make_nsp(args, nro, game_dir, name, title, author, version, icon, icon_why, 
 
     if args.title_id:
         tid = int(args.title_id, 16)
-        if not (0x0100000000000000 <= tid <= 0x0FFFFFFFFFFFFFFF) or tid & 0xFFF:
-            raise SystemExit("ERROR: the title id must be 0100000000000000..0fffffffffffffff and end in 000.")
+        if not (0x0100000000000000 <= tid <= 0x0FFFFFFFFFFFFFFF) or tid & TITLE_ID_LOW_BITS:
+            raise SystemExit("ERROR: the title id must be 0100000000000000..0fffffffffffffff and end in\n"
+                             "0000, 2000, 4000, 6000, 8000, a000, c000 or e000 (other ids are add-ons).")
     else:
         tid = default_title_id(name)
 
@@ -1279,7 +1309,7 @@ def convert_apk(args, apk, apk_path, out_game):
     report = check_game(out_game, names)
     print_report(report)
 
-    if args.convert_avif and any(n.lower().endswith(".avif") for n in names):
+    if args.convert_avif and (any(n.lower().endswith(".avif") for n in names) or report["hidden_avif"]):
         convert_avif(out_game, names)
 
     if args.pack:
@@ -1323,18 +1353,23 @@ def main():
         game_dir = os.path.abspath(args.apk)
         if os.path.isdir(os.path.join(game_dir, "game")):
             game_dir = os.path.join(game_dir, "game")
-        if not (args.pack or args.nro):
-            raise SystemExit("ERROR: {} is a folder; add --pack and/or --nro (--nsp).".format(game_dir))
+        if not (args.pack or args.nro or args.convert_avif):
+            raise SystemExit("ERROR: {} is a folder; add --pack, --convert-avif and/or --nro (--nsp).".format(game_dir))
         sd_dir = os.path.dirname(game_dir)
         name = args.name or os.path.basename(sd_dir) or "renpygame"
         parent = os.path.dirname(sd_dir)
         out = os.path.dirname(parent) if os.path.basename(parent).lower() == "switch" else sd_dir
+        if args.convert_avif:
+            # Loose files only: images already packed into .rpa stay as they are.
+            loose = [os.path.relpath(os.path.join(r, f), game_dir).replace(os.sep, "/")
+                     for r, _d, fs in os.walk(game_dir) for f in fs]
+            convert_avif(game_dir, [n for n in loose if os.path.splitext(n)[1].lower() in IMAGE_EXTS])
         if args.pack:
             pack_game(game_dir, args.pack_size * 1024 * 1024)
-            if not args.nro:
-                say("")
-                say("Done. Copy {} to the SD card (replace the old game folder).".format(game_dir))
-                return
+        if not args.nro:
+            say("")
+            say("Done. Copy {} to the SD card (replace the old game folder).".format(game_dir))
+            return
     else:
         apk_path = os.path.abspath(args.apk)
         base = os.path.splitext(os.path.basename(apk_path))[0]
