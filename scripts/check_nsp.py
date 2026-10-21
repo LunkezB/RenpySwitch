@@ -6,6 +6,9 @@ Checks for the installable (NSP) output of tools/apk2switch.py, run in CI:
       The code apk2switch takes from the .nro (nro_to_nso) must be exactly
       what elf2nso made from the ELF (segments compared after decompressing).
 
+  check_nsp.py pack WORKDIR
+      apk2switch --pack on a small game: the archives must read back.
+
   check_nsp.py nsp NRO HACBREWPACK HACTOOL WORKDIR
       Builds an NSP for a tiny game with throwaway keys, unpacks it again
       with hactool and checks what is inside.
@@ -232,7 +235,45 @@ def check_nsp(nro_path, hbp, hactool, work):
         tid, apk2switch.human(os.path.getsize(nsp))))
 
 
+def check_pack(work):
+    """apk2switch --pack: archives written, verified, readable, loose files kept."""
+    if os.path.exists(work):
+        shutil.rmtree(work)
+    game = os.path.join(work, "game")
+    files = {
+        "script.rpy": b'label start:\n    "x"\n    return\n',
+        "images/bg one.png": os.urandom(5000),
+        "images/sub/ü.jpg": os.urandom(70000),
+        "audio/music.ogg": b"",
+        "gui/window_icon.png": os.urandom(300),
+    }
+    for rel, data in files.items():
+        p = os.path.join(game, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as f:
+            f.write(data)
+    run([sys.executable, os.path.join(HERE, "..", "tools", "apk2switch.py"), game, "--pack", "--pack-size", "1"])
+    rpas = sorted(f for f in os.listdir(game) if f.endswith(".rpa"))
+    if not rpas:
+        fail("no archives written")
+    seen = {}
+    for fn in rpas:
+        path = os.path.join(game, fn)
+        for name, entries in apk2switch.read_rpa_index(path).items():
+            seen[name] = apk2switch.read_rpa_file(path, entries[0])
+    for rel, data in files.items():
+        if rel == "script.rpy":
+            if rel in seen or not os.path.isfile(os.path.join(game, rel)):
+                fail("script.rpy must stay loose")
+        elif seen.get(rel) != data:
+            fail("{} differs in the archives".format(rel))
+    print("OK: --pack wrote {} archive(s) that read back correctly".format(len(rpas)))
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["pack"] and len(sys.argv) == 3:
+        check_pack(sys.argv[2])
+        sys.exit(0)
     if sys.argv[1:2] == ["nso"] and len(sys.argv) == 4:
         check_nso(sys.argv[2], sys.argv[3])
     elif sys.argv[1:2] == ["nsp"] and len(sys.argv) == 6:

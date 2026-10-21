@@ -255,9 +255,12 @@ class _IndexUnpickler(pickle.Unpickler):
     """Archive indexes are plain data; refuse anything that would run code."""
 
     def find_class(self, module, name):
+        # Protocol-2 pickles of bytes (Ren'Py's and ours) use these.
         if module in ("_codecs", "codecs") and name == "encode":
             import codecs
             return codecs.encode
+        if module in ("__builtin__", "builtins") and name in ("bytes", "bytearray", "str"):
+            return {"bytes": bytes, "bytearray": bytearray, "str": str}[name]
         raise pickle.UnpicklingError("unexpected object in an archive index: {}.{}".format(module, name))
 
 

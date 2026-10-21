@@ -60,6 +60,9 @@ echo ">>> Python with Pillow (icons)"
 python3 -m venv "$T/venv"
 "$T/venv/bin/pip" install -q pillow
 
+echo ">>> Check: apk2switch --pack"
+"$T/venv/bin/python" scripts/check_nsp.py pack "$T/packtest"
+
 echo ">>> Check: engine code taken from the .nro == elf2nso output"
 "$T/venv/bin/python" scripts/check_nsp.py nso raw/renpy-switch.nro raw/exefs/main
 
