@@ -8,10 +8,10 @@ Get:6 http://deb.debian.org/debian bookworm-backports/main amd64 Packages [300 k
 Get:7 http://deb.debian.org/debian bookworm/main amd64 Packages [8,790 kB]
 Get:8 http://deb.debian.org/debian bookworm-updates/main amd64 Packages.diff/Index [21.8 kB]
 Ign:8 http://deb.debian.org/debian bookworm-updates/main amd64 Packages.diff/Index
-Get:9 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6,924 B]
-Get:10 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [355 kB]
+Get:9 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [355 kB]
+Get:10 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6,924 B]
 Hit:11 https://apt.devkitpro.org stable InRelease
-Fetched 9,839 kB in 1s (10.9 MB/s)
+Fetched 9,839 kB in 1s (12.4 MB/s)
 Reading package lists...
 Reading package lists...
 Building dependency tree...
@@ -94,7 +94,7 @@ Get:42 http://deb.debian.org/debian-security bookworm-security/main amd64 python
 Get:43 http://deb.debian.org/debian bookworm/main amd64 python3-venv amd64 3.11.2-1+b1 [1,200 B]
 Get:44 http://deb.debian.org/debian-security bookworm-security/main amd64 unzip amd64 6.0-28+deb12u1 [167 kB]
 Preconfiguring packages ...
-Fetched 41.0 MB in 0s (156 MB/s)
+Fetched 41.0 MB in 0s (129 MB/s)
 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 21137 files and directories currently installed.)
 Preparing to unpack .../0-libssl3_3.0.22-1~deb12u1_amd64.deb ...
 Unpacking libssl3:amd64 (3.0.22-1~deb12u1) over (3.0.16-1~deb12u1) ...
@@ -268,7 +268,7 @@ WARNING: The directory '/github/home/.cache/pip' or its parent directory is not 
 Requirement already satisfied: pip in ./.venv/lib/python3.11/site-packages (23.0.1)
 Collecting pip
   Downloading pip-26.2.2-py3-none-any.whl (1.8 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 71.8 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 27.4 MB/s eta 0:00:00
 Installing collected packages: pip
   Attempting uninstall: pip
     Found existing installation: pip 23.0.1
@@ -280,7 +280,7 @@ Collecting Cython==3.2.4
   Downloading cython-3.2.4-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (7.5 kB)
 Requirement already satisfied: setuptools in ./.venv/lib/python3.11/site-packages (66.1.1)
 Downloading cython-3.2.4-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.4 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.4/3.4 MB 222.5 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.4/3.4 MB 26.7 MB/s  0:00:00
 Installing collected packages: Cython
 Successfully installed Cython-3.2.4
 >>> All devkitPro packages already installed.
