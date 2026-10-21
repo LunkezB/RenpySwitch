@@ -12,8 +12,9 @@ and icosane.
 
 ## Using it
 
-1. **Get the engine**: download the `renpy-switch` artifact from the latest
-   successful [Actions](../../actions) run (or build it, below). It has
+1. **Get the engine**: download the files of the latest
+   [release](../../releases) (or the `renpy-switch` artifact of the latest
+   successful [Actions](../../actions) run, or build it, below). It has
    `renpy-switch.nro` (the engine), `apk2switch.py` (the converter) and
    `hacbrewpack.exe` (for installable NSPs, see below).
 2. **Get the game folder**:
@@ -114,6 +115,10 @@ docker run -it --rm -v "$PWD":/work -w /work devkitpro/devkita64:latest bash
 bash setup.bash
 bash build.bash
 ```
+
+Pushing a tag `v*` (e.g. `v8.5.3-switch.2`) also publishes the files as a
+GitHub Release, which downloads without a login (build scripts of game ports
+pin a release tag).
 
 Output in `raw/`: `renpy-switch.nro`, `renpy-switch.elf`, `exefs/main` (NSO),
 `exefs/main.npdm` and `romfs/`. `scripts/nsp_tools.bash` then builds

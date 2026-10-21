@@ -88,6 +88,23 @@ jobs:
           name: renpy-switch
           path: dist/
 
+      # A tag v* also publishes the files as a GitHub Release: unlike
+      # artifacts, those download without a GitHub login and do not expire,
+      # so game build scripts can fetch a pinned engine version.
+      - name: Publish release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ren'Py 8.5.3 for Switch ${{ github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          body: |
+            * `renpy-switch.nro` — the engine (Ren'Py 8.5.3, CPython 3.14)
+            * `apk2switch.py` — converter: Ren'Py APK or game folder -> .nro / installable .nsp
+            * `hacbrewpack.exe` / `hacbrewpack` — makes the NSP on your PC with your own console's keys
+
+            See the README for usage. Built from ${{ github.sha }}.
+
       # Logs on GitHub's storage are not always reachable for debugging, so the
       # logs are also pushed to the "ci-logs" branch, and on failure the first
       # errors are shown as annotations.
